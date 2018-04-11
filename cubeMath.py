@@ -2,8 +2,10 @@ import itertools
 
 import random
 
+
 def convertToCell(base, pos):
-	return pos[0] * (base ** 2) + pos[1] * base + pos[2]
+    return pos[0] * (base ** 2) + pos[1] * base + pos[2]
+
 
 def convertToPos(base, cellNumber):
     xPos = cellNumber // (base ** 2)
@@ -84,6 +86,7 @@ class Cell:
 class Cube:
     Size = 0
     Cells = {}
+    Curr_Cells = {}
     Perm = {}
     Direction = []
 
@@ -106,6 +109,21 @@ class Cube:
                 self.Perm[coor[2] + 1])
             self.Cells[x] = Cell(
                 list(map(convertPermutation, [xperm, yperm, zperm])))
+        self.Curr_Cells = dict.fromkeys(range(0, size**3))
+        for x in self.Curr_Cells.keys():
+            self.Curr_Cells[x] = x
+
+    def adjCells(self, x):
+        pos = convertToPos(self.Size, x)
+
+        top = convertToCell(self.Size, list(pos[:2]) + [pos[2] - 1])
+        bottom = convertToCell(self.Size, list(pos[:2]) + [pos[2] + 1])
+        north = convertToCell(self.Size, [pos[0], pos[1] - 1, pos[2]])
+        south = convertToCell(self.Size, [pos[0], pos[1] + 1, pos[2]])
+        east = convertToCell(self.Size, [pos[0] - 1] + pos[1:])
+        west = convertToCell(self.Size, [pos[0] + 1] + pos[1:])
+        adjCells = [top, bottom, north, south, east, west]
+        return filter(lambda x: x >= 0 and x < self.Size ** 3, adjCells)
 
     def initMoves(self):
         directions = dict.fromkeys(range(0, self.Size**3))
@@ -113,12 +131,8 @@ class Cube:
             mv = self.Cells[x].randDirection()
             self.Cells[x].move(mv)
             directions[x] = mv
+            print(list(self.adjCells(x)))
         self.Direction.append(directions)
-
-    def adjCells(self, x):
-    	pos = self.Cells[x].
-    	top = self.Cells[x]
-
 
 
 primeList = list(range(2, 1000))
@@ -142,5 +156,5 @@ trapRooms = list(primeList)
 trapRooms.extend(primePowers)
 trapRooms.sort()
 
-cube = Cube(10)
+cube = Cube(5)
 cube.initMoves()
