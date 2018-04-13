@@ -1,5 +1,4 @@
 import itertools
-
 import random
 
 
@@ -47,40 +46,44 @@ class Cell:
 
     start_pos = []
     curr_pos = []
-    # next_pos = []
-    # dest_pos = []
+    next_pos = []
+    dest_pos = []
 
-    available_mv = []
-    history_mv = []
+    movements = []
+    sequence = []
+    seq_p = 0
 
     def __init__(self, code):
         self.code = code
         self.start_pos = list(map(decodeDimension, code))
         self.curr_pos = self.start_pos
-        self.available_mv = ["x"] * 3 + ["y"] * 3 + ["z"] * 3
-
-    # def getMoves(dim):
-    #    return [dim[0] - dim[1], dim[1] - dim[2], dim[2] - dim[0]]
+        self.movements = [getMoves(convertToPos(10, self.code[0])), getMoves(
+            convertToPos(10, self.code[1])), getMoves(convertToPos(10, self.code[2]))]
+        self.seq_p = 0
 
     def print(self):
-        print("\tPos: {0}".format(self.start_pos))
+        print("Pos: {0}".format(self.start_pos))
         print("\tCode: {0}".format(self.code))
-    # def completedCycle(self):
-    #    if(self.start_pos == self.curr_pos):
-    #        self.cycles += 1
-    #        return True
-    #    return False
 
-    def isavaliable(self, mv):
-        return (mv in self.available_mv)
+    def generate_seq(self):
+        self.sequence.append(self.start_pos)
+        count = 0
+        for col in range(3):
+            for row in range(3):
+                self.sequence.reverse()
+                pos = self.sequence[0]
+                pos[row] += self.movements[row][col]
+                self.sequence.reverse()
+                self.sequence.append(pos)
+        self.dest_pos = self.sequence[0]
 
-    def move(self, mv):
-        self.history_mv.append(mv)
-        self.available_mv.remove(mv)
-
-    def randDirection(self):
-        secure_random = random.SystemRandom()
-        return secure_random.choice(self.available_mv)
+    def nextmove(self):
+        if self.dest_pos == self.curr_pos:
+            if self.seq_p != len(self.sequence):
+                self.seq_p = + 1
+            else:
+                self.seq_p = 0
+            self.dest_pos = self.sequence[self.seq_p]
 
 
 class Cube:
@@ -92,7 +95,7 @@ class Cube:
 
     def __init__(self, size):
         self.Size = size
-        self.Perm = dict.fromkeys(range(1, size + 1))
+        self.Perm = dict.fromkeys(range(size + 1))
         for x in self.Perm.keys():
             self.Perm[x] = findCominations(
                 x, list(itertools.product(range(10), repeat=3)))
@@ -102,16 +105,18 @@ class Cube:
             coor = convertToPos(size, x)
             secure_random = random.SystemRandom()
             xperm = secure_random.choice(
-                self.Perm[coor[0] + 1])
+                self.Perm[coor[0]])
             yperm = secure_random.choice(
-                self.Perm[coor[1] + 1])
+                self.Perm[coor[1]])
             zperm = secure_random.choice(
-                self.Perm[coor[2] + 1])
+                self.Perm[coor[2]])
             self.Cells[x] = Cell(
                 list(map(convertPermutation, [xperm, yperm, zperm])))
         self.Curr_Cells = dict.fromkeys(range(0, size**3))
         for x in self.Curr_Cells.keys():
             self.Curr_Cells[x] = x
+            self.Cells[x].print()
+            self.Cells[x].generate_seq()
 
     def adjCells(self, x):
         pos = convertToPos(self.Size, x)
@@ -124,15 +129,6 @@ class Cube:
         west = convertToCell(self.Size, [pos[0] + 1] + pos[1:])
         adjCells = [top, bottom, north, south, east, west]
         return filter(lambda x: x >= 0 and x < self.Size ** 3, adjCells)
-
-    def initMoves(self):
-        directions = dict.fromkeys(range(0, self.Size**3))
-        for x in directions.keys():
-            mv = self.Cells[x].randDirection()
-            self.Cells[x].move(mv)
-            directions[x] = mv
-            print(list(self.adjCells(x)))
-        self.Direction.append(directions)
 
 
 primeList = list(range(2, 1000))
@@ -156,5 +152,4 @@ trapRooms = list(primeList)
 trapRooms.extend(primePowers)
 trapRooms.sort()
 
-cube = Cube(5)
-cube.initMoves()
+cube = Cube(26)
