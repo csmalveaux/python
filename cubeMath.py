@@ -1,5 +1,6 @@
 import itertools
 import random
+import numpy
 
 
 def convertToCell(base, pos):
@@ -11,7 +12,7 @@ def convertToPos(base, cellNumber):
     yPos = (cellNumber % (base ** 2)) // base
     zPos = cellNumber % base
 
-    return [xPos, yPos, zPos]
+    return numpy.array([xPos, yPos, zPos])
 
 
 def findCominations(number, permutations):
@@ -31,7 +32,7 @@ def getPower(n):
 
 
 def getMoves(p):
-    return [p[0] - p[1], p[1] - p[2], p[2] - p[0]]
+    return numpy.array([p[0] - p[1], p[1] - p[2], p[2] - p[0]])
 
 
 def decodeDimension(dim):
@@ -55,35 +56,38 @@ class Cell:
 
     def __init__(self, code):
         self.code = code
-        self.start_pos = list(map(decodeDimension, code))
+        self.start_pos = numpy.array(list(map(decodeDimension, code)))
         self.curr_pos = self.start_pos
-        self.movements = [getMoves(convertToPos(10, self.code[0])), getMoves(
-            convertToPos(10, self.code[1])), getMoves(convertToPos(10, self.code[2]))]
+        x_moves = getMoves(convertToPos(10, self.code[0]))
+        y_moves = getMoves(convertToPos(10, self.code[1]))
+        z_moves = getMoves(convertToPos(10, self.code[2]))
+        self.sequence = []
+        self.movements = numpy.array([x_moves, y_moves, z_moves])
         self.seq_p = 0
 
     def print(self):
         print("Pos: {0}".format(self.start_pos))
-        print("\tCode: {0}".format(self.code))
+        print("Code: {0}".format(self.code))
 
     def generate_seq(self):
-        self.sequence.append(self.start_pos)
-        count = 0
+        sequence = []
+        sequence.append(self.start_pos[:])
         for col in range(3):
             for row in range(3):
-                self.sequence.reverse()
-                pos = self.sequence[0]
-                pos[row] += self.movements[row][col]
-                self.sequence.reverse()
-                self.sequence.append(pos)
-        self.dest_pos = self.sequence[0]
+                pos = sequence[len(sequence) - 1].copy()
+                pos[row] += self.movements[row, col]
+                sequence.append(pos[:])
+        self.dest_pos = sequence[0]
+        self.sequence = sequence
 
     def nextmove(self):
-        if self.dest_pos == self.curr_pos:
+        if numpy.array_equal(self.dest_pos, self.curr_pos):
             if self.seq_p != len(self.sequence):
-                self.seq_p = + 1
+                self.seq_p += 1
             else:
                 self.seq_p = 0
-            self.dest_pos = self.sequence[self.seq_p]
+        self.dest_pos = self.sequence[self.seq_p]
+        delta = numpy.subtract(self.dest_pos, self.curr_pos)
 
 
 class Cube:
@@ -117,6 +121,7 @@ class Cube:
             self.Curr_Cells[x] = x
             self.Cells[x].print()
             self.Cells[x].generate_seq()
+            self.Cells[x].nextmove()
 
     def adjCells(self, x):
         pos = convertToPos(self.Size, x)
@@ -152,4 +157,4 @@ trapRooms = list(primeList)
 trapRooms.extend(primePowers)
 trapRooms.sort()
 
-cube = Cube(26)
+cube = Cube(10)
