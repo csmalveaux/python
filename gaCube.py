@@ -1,8 +1,6 @@
 import itertools
 import random
 import numpy
-import sys
-import os
 
 
 def convertToCell(base, pos):
