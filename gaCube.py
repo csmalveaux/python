@@ -270,6 +270,20 @@ def calculateAverageFitness(population_fitness):
     return total_fitness / len(population_fitness)
 
 
+def mutation(individual, percent_mutation, permutations):
+    chromosome_len = len(individual)
+    base_size = int(numpy.rint(numpy.power(chromosome_len / 3, (1. / 3.))))
+    for x in range(int(chromosome_len * percent_mutation)):
+        gene_index = int(random.random() * chromosome_len)
+        cell_index = gene_index // 3
+        dim_index = gene_index % 3
+        coordinates = convertToPos(base_size, cell_index)
+        mutant_gene = selectPermutation(
+            permutations, base_size, coordinates[dim_index])
+        individual[gene_index] = mutant_gene
+    return individual
+
+
 def cross_breed(individual1, individual2):
     offspring = []
     for i in range(len(individual1)):
@@ -277,6 +291,7 @@ def cross_breed(individual1, individual2):
             offspring.append(individual1[i])
         else:
             offspring.append(individual2[i])
+
     return offspring
 
 
@@ -285,7 +300,7 @@ def print_individual(individual):
     print("\tScore: {0}".format(individual[0]), end='\n\n')
 
 
-size = 4
+size = 2
 populationSize = 100
 permutations = generatePermutationDict(size)
 population = generatePopulation(permutations, size, populationSize)
@@ -298,13 +313,15 @@ for generation in range(total_generations):
     print("Current Genertation: {0}".format(generation))
 
     if(generation > 0):
-        breeders = list(filter(lambda x: x[0] > average_fitness, population_fitness))
+        breeders = list(
+            filter(lambda x: x[0] > average_fitness, population_fitness))
 
         children = []
         random_pop = []
         for x in range(0, len(breeders), 2):
-            if(len(breeders) -  1 >= x + 1):
+            if(len(breeders) - 1 >= x + 1):
                 child = cross_breed(breeders[x][1], breeders[x + 1][1])
+                child = mutation(child, 0.05, permutations)
                 children.append(child.copy())
 
         if(len(breeders) + len(children) < populationSize):
@@ -334,7 +351,8 @@ for generation in range(total_generations):
         print_individual(population_fitness[x])
 
     average_fitness = calculateAverageFitness(population_fitness)
-    print("Average fitness of population: {0} ".format(average_fitness), end='\n\n')
+    print("Average fitness of population: {0} ".format(
+        average_fitness), end='\n\n')
 
 print("Done!")
 print("All functional Cubes")
