@@ -1,7 +1,13 @@
+
+
+# import matplotlib
+# import matplotlib.pyplot
+# import matplotlib.animation
 import itertools
 import random
 import numpy
-
+import sys
+# matplotlib.pyplot.switch_backend('GTK3Cairo')
 
 def convertToCell(base, pos):
     return pos[0] * (base ** 2) + pos[1] * base + pos[2]
@@ -91,7 +97,7 @@ class Seed:
         print("Genome: {0}".format(self.gene))
 
 
-def generatePopulation(permutation, size, populationSize):
+def generatePopulation(permutations, size, populationSize):
     population = []
     for x in range(populationSize):
         seed = Seed(size, permutations)
@@ -298,64 +304,80 @@ def print_individual(individual):
     print("\tScore: {0}".format(individual[0]), end='\n\n')
 
 
-size = 5
-populationSize = 100
-permutations = generatePermutationDict(size)
-population = generatePopulation(permutations, size, populationSize)
-total_generations = 1000
-average_fitness = 0
-population_fitness = []
-archive = {}
+def generateGeneration(baseSize, populationSize, fitness, permutations):
+    average_fitness = calculateAverageFitness(fitness)
+    fittest = fitness[0]
+    survivors = list(
+        filter(lambda x: x[0] > average_fitness, fitness))
+    population = []
+    for survivor in survivors:
+        population.append(survivor[1].copy())
 
-for generation in range(total_generations):
-    print("Current Genertation: {0}".format(generation))
+    if(len(survivors) == 0):
+        population.append(fittest[1].copy())
 
-    if(generation > 0):
-        # if(average_fitness > 0):
-        #     survivors = list(
-        #         filter(lambda x: x[0] > average_fitness, population_fitness))
-        # else:
-        #     survivors = list(
-        #         filter(lambda x: x[0] > 0, population_fitness))
-        survivors = list(
-                filter(lambda x: x[0] > average_fitness, population_fitness))
+    for x in range(0, len(survivors), 2):
+        if(len(population) < populationSize and len(survivors) - 1 >= x + 1):
+            child = cross_breed(survivors[x][1], survivors[x + 1][1])
+            child = mutation(child, 0.25, permutations)
+            population.append(child.copy())
 
-        population = []
-        for survivor in survivors:
-            population.append(survivor[1].copy())
+    if(len(population) < populationSize):
+        random_children = generatePopulation(
+            permutations, size, populationSize - len(population))
+        population.extend(random_children)
+    return population
 
-        for x in range(0, len(survivors), 2):
-            if(len(population) < populationSize and len(survivors) - 1 >= x + 1):
-                child = cross_breed(survivors[x][1], survivors[x + 1][1])
-                child = mutation(child, 0.05, permutations)
-                population.append(child.copy())
+def evolve(baseSize, populationSize, totalGenerations):
+    permutations = generatePermutationDict(baseSize)
+    population = generatePopulation(permutations, size, populationSize)
+    average_fitness = 0
+    fitness = []
+    genePool = {}
+    # trend = numpy.array([])
+    # matplotlib.use('agg')
+    # figure = matplotlib.pyplot.figure('111')
+    # ax = figure.add_subplot(111)
 
-        if(len(population) < populationSize):
-            random_children = generatePopulation(permutations, size, populationSize - len(population))
-            population.extend(random_children)
+    # figure.show()
+    # figure.canvas.draw()
 
-    population_fitness = []
-    for individual in population:
-        if(str(individual) in archive.keys()):
-            fitness_score = archive[str(individual)]
-        else:
-            fitness_score = getFitness(individual, permutations)
-            if(fitness_score > average_fitness):
-                archive.update({str(individual): fitness_score})
-        population_fitness.append([fitness_score, individual])
+    for generation in range(total_generations):
+        print("Current Genertation: {0}".format(generation))
+        if(generation > 0):
+            population = generateGeneration(
+                baseSize, populationSize, fitness, permutations)
 
-    population_fitness = sorted(
-        population_fitness, key=lambda x: x[0], reverse=True)
-    print("Top Five Fittest: ")
-    for x in range(5):
-        print_individual(population_fitness[x])
+        fitness = []
+        for individual in population:
+            if(str(individual) in genePool.keys()):
+                fitness_score = genePool[str(individual)]
+            else:
+                fitness_score = getFitness(individual, permutations)
+                if(fitness_score > average_fitness):
+                    genePool.update({str(individual): fitness_score})
+            fitness.append([fitness_score, individual])
 
-    average_fitness = calculateAverageFitness(population_fitness)
-    print("Average fitness of population: {0} ".format(
-        average_fitness), end='\n\n')
+        fitness = sorted(
+            fitness, key=lambda x: x[0], reverse=True)
+        average_fitness = calculateAverageFitness(fitness)
+        print("Average fitness of population: {0} ".format(
+            average_fitness), end='\n\n')
+        # trend.append(average_fitness)
+        # ax.clear()
+        # ax.plot(trend[:])
+        # figure.canvas.draw()
+    return list(
+        filter(lambda x: x[0] > 0, fitness))
+
+
+size = int(sys.argv[1])
+populationSize = int(sys.argv[2])
+total_generations = int(sys.argv[3])
+
+fittest = evolve(size, populationSize, total_generations)
 
 print("Done!")
-print("All functional Cubes")
-
-for x in list(filter(lambda x: x[0] > 0, population_fitness)):
+print("Top 10% Cubes")
+for x in fittest[0:int(len(fittest) * 0.10)]:
     print_individual(x)
