@@ -300,11 +300,11 @@ def print_individual(individual):
     print("\tScore: {0}".format(individual[0]), end='\n\n')
 
 
-size = 2
+size = 5
 populationSize = 100
 permutations = generatePermutationDict(size)
 population = generatePopulation(permutations, size, populationSize)
-total_generations = 100
+total_generations = 1000
 average_fitness = 0
 population_fitness = []
 archive = {}
@@ -313,36 +313,38 @@ for generation in range(total_generations):
     print("Current Genertation: {0}".format(generation))
 
     if(generation > 0):
-        breeders = list(
-            filter(lambda x: x[0] > average_fitness, population_fitness))
-
-        children = []
-        random_pop = []
-        for x in range(0, len(breeders), 2):
-            if(len(breeders) - 1 >= x + 1):
-                child = cross_breed(breeders[x][1], breeders[x + 1][1])
-                child = mutation(child, 0.05, permutations)
-                children.append(child.copy())
-
-        if(len(breeders) + len(children) < populationSize):
-            random_pop = generatePopulation(
-                permutations, size,
-                populationSize - len(breeders) - len(children))
+        # if(average_fitness > 0):
+        #     survivors = list(
+        #         filter(lambda x: x[0] > average_fitness, population_fitness))
+        # else:
+        #     survivors = list(
+        #         filter(lambda x: x[0] > 0, population_fitness))
+        survivors = list(
+                filter(lambda x: x[0] > average_fitness, population_fitness))
 
         population = []
-        for parent in breeders:
-            population.append(parent[1])
-        population.extend(children)
-        population.extend(random_pop)
+        for survivor in survivors:
+            population.append(survivor[1].copy())
+
+        for x in range(0, len(survivors), 2):
+            if(len(population) < populationSize and len(survivors) - 1 >= x + 1):
+                child = cross_breed(survivors[x][1], survivors[x + 1][1])
+                child = mutation(child, 0.05, permutations)
+                population.append(child.copy())
+
+        if(len(population) < populationSize):
+            random_children = generatePopulation(permutations, size, populationSize - len(population))
+            population.extend(random_children)
 
     population_fitness = []
-    for pop in population:
-        if(str(pop) in archive.keys()):
-            fitness_score = archive[str(pop)]
+    for individual in population:
+        if(str(individual) in archive.keys()):
+            fitness_score = archive[str(individual)]
         else:
-            fitness_score = getFitness(pop, permutations)
-            archive.update({str(pop): fitness_score})
-        population_fitness.append([fitness_score, pop])
+            fitness_score = getFitness(individual, permutations)
+            if(fitness_score > average_fitness):
+                archive.update({str(individual): fitness_score})
+        population_fitness.append([fitness_score, individual])
 
     population_fitness = sorted(
         population_fitness, key=lambda x: x[0], reverse=True)
