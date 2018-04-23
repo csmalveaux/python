@@ -118,6 +118,7 @@ class Cell:
         z_moves = getMoves(convertToPos(10, self.code[2]))
         self.sequence = []
         self.movements = numpy.array([x_moves, y_moves, z_moves])
+        print(self.movements)
         self.seq_p = 0
         self.blocked = 0
         self.blockedby = -1
@@ -266,7 +267,7 @@ class Cube:
 # trapRooms.extend(primePowers)
 # trapRooms.sort()
 
-# cube = Cube(27)
+cube = Cube(2)
 # for x in cube.Perm.keys():
 #     print("{0}: {1}".format(x, len(cube.Perm[x])))
 # print("\n")
@@ -284,10 +285,10 @@ class Cube:
 #         uniquePairs.append(pair)
 # print(uniquePairs)
 # print("Done!")
-size = 27
+size = 2
 permutations = generatePermutationDict(size)
 seeds = []
-for x in range(100):
+for x in range(1):
     seed = Seed(size, permutations)
     seed.print()
     seeds.append(seed)

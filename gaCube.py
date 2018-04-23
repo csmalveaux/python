@@ -1,13 +1,14 @@
 
 
-# import matplotlib
-# import matplotlib.pyplot
-# import matplotlib.animation
+import matplotlib
+import matplotlib.pyplot
+import matplotlib.animation
 import itertools
 import random
 import numpy
 import sys
-# matplotlib.pyplot.switch_backend('GTK3Cairo')
+import os
+
 
 def convertToCell(base, pos):
     return pos[0] * (base ** 2) + pos[1] * base + pos[2]
@@ -259,11 +260,11 @@ def getFitness(individual, permutations):
 
     if(not cube.locked and iterations > 1 and iterations < limit):
         if points > 0:
-            return iterations
+            return iterations, cube.deadlocks, cube.locked
         else:
-            return points
+            return points, cube.deadlocks, cube.locked
     else:
-        return -1 * limit
+        return -1 * limit, cube.deadlocks, cube.locked
 
 
 def calculateAverageFitness(population_fitness):
@@ -304,9 +305,18 @@ def print_individual(individual):
     print("\tScore: {0}".format(individual[0]), end='\n\n')
 
 
+def similarity(individual1, individual2):
+    gene_match = 0
+    for i in range(len(individual1)):
+        if(individual1[i] == individual2[i]):
+            gene_match += 1
+    return (gene_match / len(individual1))
+
+
 def generateGeneration(baseSize, populationSize, fitness, permutations):
     average_fitness = calculateAverageFitness(fitness)
     fittest = fitness[0]
+    # fitness = list(set(fitness[1]))
     survivors = list(
         filter(lambda x: x[0] > average_fitness, fitness))
     population = []
@@ -319,6 +329,7 @@ def generateGeneration(baseSize, populationSize, fitness, permutations):
     for x in range(0, len(survivors), 2):
         if(len(population) < populationSize and len(survivors) - 1 >= x + 1):
             child = cross_breed(survivors[x][1], survivors[x + 1][1])
+            # match_score = similarity(survivors[x][1], survivors[x + 1][1])
             child = mutation(child, 0.25, permutations)
             population.append(child.copy())
 
@@ -328,21 +339,26 @@ def generateGeneration(baseSize, populationSize, fitness, permutations):
         population.extend(random_children)
     return population
 
+
 def evolve(baseSize, populationSize, totalGenerations):
     permutations = generatePermutationDict(baseSize)
     population = generatePopulation(permutations, size, populationSize)
     average_fitness = 0
     fitness = []
     genePool = {}
-    # trend = numpy.array([])
-    # matplotlib.use('agg')
-    # figure = matplotlib.pyplot.figure('111')
-    # ax = figure.add_subplot(111)
+    trend = numpy.array([])
+    top10_trend = numpy.array([])
+    scatter_success_fitness = []
+    scatter_success_deadlocks = []
+    scatter_failure_fitness = []
+    scatter_failure_deadlocks = []
+    scatter_fail = [[], []]
+    matplotlib.pyplot.ion()
 
-    # figure.show()
-    # figure.canvas.draw()
+    limit = int(numpy.power(100, int(numpy.log(baseSize ** 3))))
 
     for generation in range(total_generations):
+        os.system('clear')
         print("Current Genertation: {0}".format(generation))
         if(generation > 0):
             population = generateGeneration(
@@ -353,20 +369,64 @@ def evolve(baseSize, populationSize, totalGenerations):
             if(str(individual) in genePool.keys()):
                 fitness_score = genePool[str(individual)]
             else:
-                fitness_score = getFitness(individual, permutations)
+                fitness_score, deadlocks, locked = getFitness(
+                    individual, permutations)
                 if(fitness_score > average_fitness):
                     genePool.update({str(individual): fitness_score})
-            fitness.append([fitness_score, individual])
 
+                if(fitness_score > 0):
+                    scatter_success_fitness.append(fitness_score)
+                    scatter_success_deadlocks.append(deadlocks)
+                else:
+                    if(locked == False and fitness_score > -limit):
+                        scatter_failure_fitness.append(fitness_score)
+                        scatter_failure_deadlocks.append(deadlocks)
+
+            fitness.append([fitness_score, individual])
         fitness = sorted(
             fitness, key=lambda x: x[0], reverse=True)
         average_fitness = calculateAverageFitness(fitness)
+        average_fitness_10 = calculateAverageFitness(
+            fitness[0:int(len(fitness) * 0.10)])
         print("Average fitness of population: {0} ".format(
             average_fitness), end='\n\n')
-        # trend.append(average_fitness)
-        # ax.clear()
-        # ax.plot(trend[:])
-        # figure.canvas.draw()
+        trend = numpy.append(trend, average_fitness)
+        top10_trend = numpy.append(top10_trend, average_fitness_10)
+
+        matplotlib.pyplot.figure(1).clf()
+        matplotlib.pyplot.subplot(211)
+        matplotlib.pyplot.plot(trend, label='Average Fitness')
+        matplotlib.pyplot.xlabel('Generation', fontsize=10)
+        matplotlib.pyplot.ylabel('Fitness', fontsize=10)
+        matplotlib.pyplot.title('Fitness vs Generation')
+
+        matplotlib.pyplot.subplot(212)
+        matplotlib.pyplot.plot(top10_trend, label='Top 10 Fitness')
+        matplotlib.pyplot.xlabel('Generation', fontsize=10)
+        matplotlib.pyplot.ylabel('Fitness', fontsize=10)
+        matplotlib.pyplot.title('Top 10 Fitness vs Generation')
+
+        matplotlib.pyplot.figure(2).clf()
+
+        histlist = [item[0] for item in fitness]
+        histlist = list(filter(lambda x: x > -limit, histlist))
+        matplotlib.pyplot.hist(numpy.asarray(histlist),
+                               bins=(populationSize / 2))
+        matplotlib.pyplot.title("Fitness Scores")
+
+        matplotlib.pyplot.figure(3).clf()
+        data = ((numpy.array(scatter_success_fitness), numpy.array(scatter_success_deadlocks)), (
+            numpy.array(scatter_failure_fitness), numpy.array(scatter_failure_deadlocks)))
+        colors = ("blue", "red")
+        groups = ("Success", "Failure")
+        for data, color, group, in zip(data, colors, groups):
+            x, y = data
+            matplotlib.pyplot.scatter(
+                x, y, alpha=0.8, c=color, edgecolors='none', s=30, label=group)
+        matplotlib.pyplot.title('Score vs Deadlocks')
+        matplotlib.pyplot.xlabel('Fitness', fontsize=10)
+        matplotlib.pyplot.ylabel('Deadlocks', fontsize=10)
+        matplotlib.pyplot.pause(0.01)
     return list(
         filter(lambda x: x[0] > 0, fitness))
 
