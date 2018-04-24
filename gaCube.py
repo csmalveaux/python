@@ -313,10 +313,23 @@ def similarity(individual1, individual2):
     return (gene_match / len(individual1))
 
 
+def deleteDuplicates(fitness_list):
+    isDuplicates = True
+    while isDuplicates:
+        isDuplicates = False
+        for i in range(len(fitness_list)):
+            item = fitness_list[i]
+            if(i < len(fitness_list) - 1):
+                if(item[1] == fitness_list[i + 1][1]):
+                    isDuplicates = True
+                    fitness_list.remove(fitness_list[i + 1])
+                    break
+    return fitness_list
+
 def generateGeneration(baseSize, populationSize, fitness, permutations):
     average_fitness = calculateAverageFitness(fitness)
     fittest = fitness[0]
-    # fitness = list(set(fitness[1]))
+    fitness = deleteDuplicates(fitness)
     survivors = list(
         filter(lambda x: x[0] > average_fitness, fitness))
     population = []
@@ -411,7 +424,7 @@ def evolve(baseSize, populationSize, totalGenerations):
         histlist = [item[0] for item in fitness]
         histlist = list(filter(lambda x: x > -limit, histlist))
         matplotlib.pyplot.hist(numpy.asarray(histlist),
-                               bins=(populationSize / 2))
+                               bins=int(populationSize / 2))
         matplotlib.pyplot.title("Fitness Scores")
 
         matplotlib.pyplot.figure(3).clf()
