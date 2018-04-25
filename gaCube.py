@@ -1,5 +1,5 @@
 
-
+from mpl_toolkits.mplot3d import axes3d
 import matplotlib
 import matplotlib.pyplot
 import matplotlib.animation
@@ -218,6 +218,27 @@ class Cube:
                         self.locked = True
         return deadlocks // 2
 
+    def analyze(self):
+        matplotlib.pyplot.ion()
+        matplotlib.pyplot.figure(4).clf()
+        matplotlib.pyplot.gca(projection='3d')
+
+        x, y, z = numpy.meshgrid(numpy.arange(self.size + 2),
+                                 numpy.arange(self.size + 2),
+                                 numpy.arange(self.size + 2))
+        u = numpy.zeros((self.size + 2, self.size + 2, self.size + 2))
+        v = numpy.zeros((self.size + 2, self.size + 2, self.size + 2))
+        w = numpy.zeros((self.size + 2, self.size + 2, self.size + 2))
+
+        for i in self.cells.keys():
+            coor = convertToPos(self.size, i)
+            movements = self.cells[i].movements
+            u[coor[0] + 1, coor[1] + 1, coor[2] + 1] = movements[0, 0]
+            v[coor[0] + 1, coor[1] + 1, coor[2] + 1] = movements[1, 0]
+            w[coor[0] + 1, coor[1] + 1, coor[2] + 1] = movements[2, 0]
+        matplotlib.pyplot.quiver(x, y, z, u, v, w, cmap=matplotlib.pyplot.cm.jet, normalize=True)
+        input()
+
     def iterate(self):
         points = 0
         for x in self.cells.keys():
@@ -325,6 +346,7 @@ def deleteDuplicates(fitness_list):
                     fitness_list.remove(fitness_list[i + 1])
                     break
     return fitness_list
+
 
 def generateGeneration(baseSize, populationSize, fitness, permutations):
     average_fitness = calculateAverageFitness(fitness)
@@ -448,9 +470,15 @@ size = int(sys.argv[1])
 populationSize = int(sys.argv[2])
 total_generations = int(sys.argv[3])
 
-fittest = evolve(size, populationSize, total_generations)
+# fittest = evolve(size, populationSize, total_generations)
 
-print("Done!")
-print("Top 10% Cubes")
-for x in fittest[0:int(len(fittest) * 0.10)]:
-    print_individual(x)
+# print("Done!")
+# print("Top 10% Cubes")
+# for x in fittest[0:int(len(fittest) * 0.10)]:
+#     print_individual(x)
+
+permutations = generatePermutationDict(size)
+population = generatePopulation(permutations, size, populationSize)
+for individual in population:
+    cube = Cube(individual, permutations)
+    cube.analyze()
