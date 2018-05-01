@@ -128,7 +128,10 @@ class Cell:
         y_moves = getMoves(convertToPos(10, self.code[1]))
         z_moves = getMoves(convertToPos(10, self.code[2]))
         self.sequence = []
-        self.movements = numpy.array([x_moves, y_moves, z_moves])
+        if (decodeDimension(code[0]) in trapRooms or decodeDimension(code[1]) in trapRooms or decodeDimension(code[2]) in trapRooms):
+            self.movements = numpy.zeros((3, 3))
+        else:
+            self.movements = numpy.array([x_moves, y_moves, z_moves])
         self.seq_p = 0
         self.blocked = 0
         self.blockedby = -1
@@ -169,6 +172,18 @@ class Cell:
                                                          numpy.abs(numpy.sum(delta))))
             return self.next_pos
         return self.curr_pos
+
+    def isTrap(self):
+        if(decodeDimension(self.code[0] in trapRooms)):
+            return True
+
+        if(decodeDimension(self.code[1] in trapRooms)):
+            return True
+
+        if(decodeDimension(self.code[2] in trapRooms)):
+            return True
+
+        return False
 
 
 class Cube:
@@ -236,7 +251,8 @@ class Cube:
             u[coor[0] + 1, coor[1] + 1, coor[2] + 1] = movements[0, 0]
             v[coor[0] + 1, coor[1] + 1, coor[2] + 1] = movements[1, 0]
             w[coor[0] + 1, coor[1] + 1, coor[2] + 1] = movements[2, 0]
-        matplotlib.pyplot.quiver(x, y, z, u, v, w, cmap=matplotlib.pyplot.cm.jet, normalize=True)
+        matplotlib.pyplot.quiver(
+            x, y, z, u, v, w, cmap=matplotlib.pyplot.cm.jet, normalize=True)
         input()
 
     def iterate(self):
@@ -245,7 +261,7 @@ class Cube:
             next_move = self.cells[x].move()
             space_val = self.space[
                 next_move[0], next_move[1], next_move[2]]
-            if (space_val == -1 or space_val == x):
+            if (space_val == -1 or space_val == x or self.cells[space_val].isTrap()):
                 curr_pos = self.cells[x].curr_pos
                 self.space[curr_pos[0], curr_pos[1], curr_pos[2]] = -1
                 self.space[next_move[0], next_move[1], next_move[2]] = x
@@ -470,15 +486,38 @@ size = int(sys.argv[1])
 populationSize = int(sys.argv[2])
 total_generations = int(sys.argv[3])
 
-# fittest = evolve(size, populationSize, total_generations)
+primeList = list(range(2, 1000))
+for x in primeList:
+    for y in range(2 * x, 1000, x):
+        if(y in primeList):
+            primeList.remove(y)
 
-# print("Done!")
-# print("Top 10% Cubes")
-# for x in fittest[0:int(len(fittest) * 0.10)]:
-#     print_individual(x)
+primePowers = list()
+for x in primeList:
+    powLamda = getPower(x)
+    primePower = powLamda(2)
+    count = 2
+    while(primePower < 1000):
+        primePower = powLamda(count)
+        count = count + 1
+        if(primePower is not primePowers and primePower < 1000):
+            primePowers.append(primePower)
 
-permutations = generatePermutationDict(size)
-population = generatePopulation(permutations, size, populationSize)
-for individual in population:
-    cube = Cube(individual, permutations)
-    cube.analyze()
+global trapRooms
+
+trapRooms = list(primeList)
+trapRooms.extend(primePowers)
+trapRooms.sort()
+
+fittest = evolve(size, populationSize, total_generations)
+
+print("Done!")
+print("Top 10% Cubes")
+for x in fittest[0:int(len(fittest) * 0.10)]:
+    print_individual(x)
+
+# permutations = generatePermutationDict(size)
+# population = generatePopulation(permutations, size, populationSize)
+# for individual in population:
+#     cube = Cube(individual, permutations)
+#     cube.analyze()
