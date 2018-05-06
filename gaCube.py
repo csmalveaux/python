@@ -103,6 +103,8 @@ def generatePopulation(permutations, size, populationSize):
     for x in range(populationSize):
         seed = Seed(size, permutations)
         population.append(seed.gene)
+        os.system('clear')
+        print("Generating {0} out of {1}".format(x + 1, populationSize))
     return population
 
 
@@ -128,7 +130,7 @@ class Cell:
         y_moves = getMoves(convertToPos(10, self.code[1]))
         z_moves = getMoves(convertToPos(10, self.code[2]))
         self.sequence = []
-        if (decodeDimension(code[0]) in trapRooms or decodeDimension(code[1]) in trapRooms or decodeDimension(code[2]) in trapRooms):
+        if (code[0] in trapRooms or code[1] in trapRooms or code[2] in trapRooms):
             self.movements = numpy.zeros((3, 3))
         else:
             self.movements = numpy.array([x_moves, y_moves, z_moves])
@@ -174,13 +176,13 @@ class Cell:
         return self.curr_pos
 
     def isTrap(self):
-        if(decodeDimension(self.code[0] in trapRooms)):
+        if(self.code[0] in trapRooms):
             return True
 
-        if(decodeDimension(self.code[1] in trapRooms)):
+        if(self.code[1] in trapRooms):
             return True
 
-        if(decodeDimension(self.code[2] in trapRooms)):
+        if(self.code[2] in trapRooms):
             return True
 
         return False
@@ -271,6 +273,7 @@ class Cube:
                 else:
                     points += 1
                 self.cells[x].blocked = 0
+                self.blocked_pairs[x] = None
             else:
                 self.cells[x].blocked += 1
                 points -= self.cells[x].blocked
@@ -282,7 +285,6 @@ class Cube:
 def getFitness(individual, permutations):
     cube = Cube(individual, permutations)
     iterations = 0
-    limit = int(numpy.power(100, int(numpy.log(cube.size ** 3))))
     points = limit
 
     while points > 0:
@@ -297,11 +299,11 @@ def getFitness(individual, permutations):
 
     if(not cube.locked and iterations > 1 and iterations < limit):
         if points > 0:
-            return iterations, cube.deadlocks, cube.locked
+            return iterations
         else:
-            return points, cube.deadlocks, cube.locked
+            return points
     else:
-        return -1 * limit, cube.deadlocks, cube.locked
+        return -1 * limit
 
 
 def calculateAverageFitness(population_fitness):
@@ -374,8 +376,8 @@ def generateGeneration(baseSize, populationSize, fitness, permutations):
     for survivor in survivors:
         population.append(survivor[1].copy())
 
-    if(len(survivors) == 0):
-        population.append(fittest[1].copy())
+    if(len(survivors) == 0 and fitness[0] > -limit):
+        population.append(fittest[1])
 
     for x in range(0, len(survivors), 2):
         if(len(population) < populationSize and len(survivors) - 1 >= x + 1):
@@ -399,18 +401,11 @@ def evolve(baseSize, populationSize, totalGenerations):
     genePool = {}
     trend = numpy.array([])
     top10_trend = numpy.array([])
-    scatter_success_fitness = []
-    scatter_success_deadlocks = []
-    scatter_failure_fitness = []
-    scatter_failure_deadlocks = []
-    scatter_fail = [[], []]
     matplotlib.pyplot.ion()
-
-    limit = int(numpy.power(100, int(numpy.log(baseSize ** 3))))
 
     for generation in range(total_generations):
         os.system('clear')
-        print("Current Genertation: {0}".format(generation))
+        print("Current Genertation: {0}".format(generation + 1))
         if(generation > 0):
             population = generateGeneration(
                 baseSize, populationSize, fitness, permutations)
@@ -420,20 +415,12 @@ def evolve(baseSize, populationSize, totalGenerations):
             if(str(individual) in genePool.keys()):
                 fitness_score = genePool[str(individual)]
             else:
-                fitness_score, deadlocks, locked = getFitness(
+                fitness_score = getFitness(
                     individual, permutations)
                 if(fitness_score > average_fitness):
                     genePool.update({str(individual): fitness_score})
-
-                if(fitness_score > 0):
-                    scatter_success_fitness.append(fitness_score)
-                    scatter_success_deadlocks.append(deadlocks)
-                else:
-                    if(locked == False and fitness_score > -limit):
-                        scatter_failure_fitness.append(fitness_score)
-                        scatter_failure_deadlocks.append(deadlocks)
-
             fitness.append([fitness_score, individual])
+
         fitness = sorted(
             fitness, key=lambda x: x[0], reverse=True)
         average_fitness = calculateAverageFitness(fitness)
@@ -458,26 +445,14 @@ def evolve(baseSize, populationSize, totalGenerations):
         matplotlib.pyplot.title('Top 10 Fitness vs Generation')
 
         matplotlib.pyplot.figure(2).clf()
+        
 
         histlist = [item[0] for item in fitness]
         histlist = list(filter(lambda x: x > -limit, histlist))
         matplotlib.pyplot.hist(numpy.asarray(histlist),
                                bins=int(populationSize / 2))
         matplotlib.pyplot.title("Fitness Scores")
-
-        matplotlib.pyplot.figure(3).clf()
-        data = ((numpy.array(scatter_success_fitness), numpy.array(scatter_success_deadlocks)), (
-            numpy.array(scatter_failure_fitness), numpy.array(scatter_failure_deadlocks)))
-        colors = ("blue", "red")
-        groups = ("Success", "Failure")
-        for data, color, group, in zip(data, colors, groups):
-            x, y = data
-            matplotlib.pyplot.scatter(
-                x, y, alpha=0.8, c=color, edgecolors='none', s=30, label=group)
-        matplotlib.pyplot.title('Score vs Deadlocks')
-        matplotlib.pyplot.xlabel('Fitness', fontsize=10)
-        matplotlib.pyplot.ylabel('Deadlocks', fontsize=10)
-        matplotlib.pyplot.pause(0.01)
+        matplotlib.pyplot.pause(0.10)
     return list(
         filter(lambda x: x[0] > 0, fitness))
 
@@ -509,12 +484,20 @@ trapRooms = list(primeList)
 trapRooms.extend(primePowers)
 trapRooms.sort()
 
+global limit
+limit = int(numpy.power(10, int(numpy.log(size ** 3))))
+
 fittest = evolve(size, populationSize, total_generations)
 
 print("Done!")
-print("Top 10% Cubes")
-for x in fittest[0:int(len(fittest) * 0.10)]:
+print("Top Functional Cubes")
+for x in fittest:
     print_individual(x)
+
+# print("Done!")
+# print("Top 10% Cubes")
+# for x in fittest[0:int(len(fittest) * 0.10)]:
+#     print_individual(x)
 
 # permutations = generatePermutationDict(size)
 # population = generatePopulation(permutations, size, populationSize)
