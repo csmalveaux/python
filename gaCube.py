@@ -3,9 +3,14 @@ from mpl_toolkits.mplot3d import axes3d
 import matplotlib
 import matplotlib.pyplot
 import matplotlib.animation
+from matplotlib import colors
+from matplotlib.offsetbox import AnchoredText
 import itertools
+import datetime
 import random
 import numpy
+import dill
+import glob
 import sys
 import os
 
@@ -103,8 +108,10 @@ def generatePopulation(permutations, size, populationSize):
     for x in range(populationSize):
         seed = Seed(size, permutations)
         population.append(seed.gene)
-        os.system('clear')
-        print("Generating {0} out of {1}".format(x + 1, populationSize))
+        if(x != populationSize - 1):
+            print("Generating {0} out of {1}".format(x + 1, populationSize), end='\r')
+        else:
+            print("Generating {0} out of {1}".format(x + 1, populationSize))
     return population
 
 
@@ -176,15 +183,10 @@ class Cell:
         return self.curr_pos
 
     def isTrap(self):
-        if(self.code[0] in trapRooms):
+        if(self.code[0] in trapRooms or
+            self.code[1] in trapRooms or
+                self.code[2] in trapRooms):
             return True
-
-        if(self.code[1] in trapRooms):
-            return True
-
-        if(self.code[2] in trapRooms):
-            return True
-
         return False
 
 
@@ -281,6 +283,13 @@ class Cube:
         self.deadlocks = self.deadlockcheck()
         return points
 
+    def trapCount(self):
+        count = 0;
+        for x in self.cells.keys():
+            if self.cells[x].isTrap():
+                count += 1;
+        return count
+
 
 def getFitness(individual, permutations):
     cube = Cube(individual, permutations)
@@ -299,11 +308,11 @@ def getFitness(individual, permutations):
 
     if(not cube.locked and iterations > 1 and iterations < limit):
         if points > 0:
-            return iterations
+            return (iterations, cube.trapCount())
         else:
-            return points
+            return (points, cube.trapCount())
     else:
-        return -1 * limit
+        return (-1 * limit, cube.trapCount()) 
 
 
 def calculateAverageFitness(population_fitness):
@@ -370,13 +379,16 @@ def generateGeneration(baseSize, populationSize, fitness, permutations):
     average_fitness = calculateAverageFitness(fitness)
     fittest = fitness[0]
     fitness = deleteDuplicates(fitness)
-    survivors = list(
-        filter(lambda x: x[0] > average_fitness, fitness))
+    if(len(fitness) < populationSize):
+        survivors = fitness
+    else:
+        survivors = list(
+            filter(lambda x: x[0] > average_fitness, fitness))
     population = []
     for survivor in survivors:
         population.append(survivor[1].copy())
 
-    if(len(survivors) == 0 and fitness[0] > -limit):
+    if(len(survivors) == 0 or fittest[0] <= -limit):
         population.append(fittest[1])
 
     for x in range(0, len(survivors), 2):
@@ -393,18 +405,23 @@ def generateGeneration(baseSize, populationSize, fitness, permutations):
     return population
 
 
-def evolve(baseSize, populationSize, totalGenerations):
+def evolve(baseSize, populationSize, totalGenerations, saveDir, seeds):
     permutations = generatePermutationDict(baseSize)
-    population = generatePopulation(permutations, size, populationSize)
+    if(seeds is None):
+        population = generatePopulation(permutations, baseSize, populationSize)
+    else:
+        population = generateGeneration(
+            baseSize, populationSize, seeds, permutations)
     average_fitness = 0
     fitness = []
     genePool = {}
     trend = numpy.array([])
     top10_trend = numpy.array([])
+    fitness_trapRatio = []
+    scatter_fittness_failure = []
     matplotlib.pyplot.ion()
 
     for generation in range(total_generations):
-        os.system('clear')
         print("Current Genertation: {0}".format(generation + 1))
         if(generation > 0):
             population = generateGeneration(
@@ -415,10 +432,12 @@ def evolve(baseSize, populationSize, totalGenerations):
             if(str(individual) in genePool.keys()):
                 fitness_score = genePool[str(individual)]
             else:
-                fitness_score = getFitness(
+                fitness_score, numtraps = getFitness(
                     individual, permutations)
                 if(fitness_score > average_fitness):
                     genePool.update({str(individual): fitness_score})
+                if(fitness_score > -limit):    
+                    fitness_trapRatio.append([fitness_score, (numtraps/(baseSize ** 3))])
             fitness.append([fitness_score, individual])
 
         fitness = sorted(
@@ -434,25 +453,48 @@ def evolve(baseSize, populationSize, totalGenerations):
         matplotlib.pyplot.figure(1).clf()
         matplotlib.pyplot.subplot(211)
         matplotlib.pyplot.plot(trend, label='Average Fitness')
+        text = matplotlib.pyplot.text(0.6, 0.15, "Generation: {0} \nAverage Fittness: {1}".format(generation, average_fitness), horizontalalignment='left', verticalalignment='center', transform=matplotlib.pyplot.subplot(211).transAxes)
         matplotlib.pyplot.xlabel('Generation', fontsize=10)
         matplotlib.pyplot.ylabel('Fitness', fontsize=10)
         matplotlib.pyplot.title('Fitness vs Generation')
 
         matplotlib.pyplot.subplot(212)
         matplotlib.pyplot.plot(top10_trend, label='Top 10 Fitness')
+        text = matplotlib.pyplot.text(0.6, 0.15, "Generation: {0} \nAverage Fittness: {1}".format(generation, average_fitness_10), horizontalalignment='left', verticalalignment='center', transform=matplotlib.pyplot.subplot(212).transAxes)
         matplotlib.pyplot.xlabel('Generation', fontsize=10)
         matplotlib.pyplot.ylabel('Fitness', fontsize=10)
         matplotlib.pyplot.title('Top 10 Fitness vs Generation')
-
+        matplotlib.pyplot.tight_layout()
         matplotlib.pyplot.figure(2).clf()
-        
 
         histlist = [item[0] for item in fitness]
         histlist = list(filter(lambda x: x > -limit, histlist))
-        matplotlib.pyplot.hist(numpy.asarray(histlist),
-                               bins=int(populationSize / 2))
+        matplotlib.pyplot.hist(numpy.asarray(histlist))
         matplotlib.pyplot.title("Fitness Scores")
+
+        matplotlib.pyplot.figure(3).clf()
+        x = list(map(lambda x: x[0], fitness_trapRatio))
+        y = list(map(lambda x: x[1], fitness_trapRatio))
+        #matplotlib.pyplot.scatter(x, y, alpha=0.8, c='blue', edgecolors='none', s=30, label='success')
+        matplotlib.pyplot.hist2d(x, y, norm=colors.LogNorm())
+        matplotlib.pyplot.colorbar()
+        # x = list(map(lambda x: x[0], scatter_fittness_failure))
+        # y = list(map(lambda x: x[1], scatter_fittness_failure))
+        # #matplotlib.pyplot.scatter(x, y, alpha=0.8, c='red', edgecolors='none', s=30, label='failure')
+        # matplotlib.pyplot.hist2d(x, y, bins=100, norm=colors.LogNorm())
+        matplotlib.pyplot.title('Score vs Trap Density')
+        matplotlib.pyplot.xlabel('Fitness', fontsize=10)
+        matplotlib.pyplot.ylabel('Trap Density', fontsize=10)
         matplotlib.pyplot.pause(0.10)
+    matplotlib.pyplot.figure(1)
+    matplotlib.pyplot.savefig(os.path.join(
+        saveDir, "fitgraphs_{date:%Y%m%d_%H%M%S}.png".format(date=datetime.datetime.now())), orientation='portrait')
+    matplotlib.pyplot.figure(2)
+    matplotlib.pyplot.savefig(os.path.join(
+        saveDir, "histgraph_{date:%Y%m%d_%H%M%S}.png".format(date=datetime.datetime.now())))
+    matplotlib.pyplot.figure(3)
+    matplotlib.pyplot.savefig(os.path.join(
+        saveDir, "trapgraph_{date:%Y%m%d_%H%M%S}.png".format(date=datetime.datetime.now())))
     return list(
         filter(lambda x: x[0] > 0, fitness))
 
@@ -460,6 +502,7 @@ def evolve(baseSize, populationSize, totalGenerations):
 size = int(sys.argv[1])
 populationSize = int(sys.argv[2])
 total_generations = int(sys.argv[3])
+startWithSeed = int(sys.argv[4])
 
 primeList = list(range(2, 1000))
 for x in primeList:
@@ -486,13 +529,31 @@ trapRooms.sort()
 
 global limit
 limit = int(numpy.power(10, int(numpy.log(size ** 3))))
+directory = str(size)
+if not os.path.isdir(directory):
+    os.mkdir(directory)
+files = []
+files += [f for f in os.listdir(directory) if f.endswith('.pkl')]
+files = [os.path.join(directory,i) for i in files]
+files = sorted(files, key=os.path.getmtime, reverse=True)
+if(len(files) > 0 and startWithSeed == 1):
+    with open(files[0], 'rb') as f:
+        fittest = dill.load(f)
+    fittest = evolve(size, populationSize,
+                     total_generations, directory, fittest)
+else:
+    fittest = evolve(size, populationSize, total_generations, directory, None)
 
-fittest = evolve(size, populationSize, total_generations)
+if len(fittest) > 0:
+    with open(os.path.join(directory, "fittest_{date:%Y%m%d_%H%M%S}.pkl".format(date=datetime.datetime.now())), 'wb') as f:
+        dill.dump(list(fittest), f)
 
 print("Done!")
-print("Top Functional Cubes")
-for x in fittest:
-    print_individual(x)
+
+if len(fittest) > 0:
+    print("Top Functional Cubes")
+    for x in fittest:
+        print_individual(x)
 
 # print("Done!")
 # print("Top 10% Cubes")
