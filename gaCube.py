@@ -4,13 +4,11 @@ import matplotlib
 import matplotlib.pyplot
 import matplotlib.animation
 from matplotlib import colors
-from matplotlib.offsetbox import AnchoredText
 import itertools
 import datetime
 import random
 import numpy
 import dill
-import glob
 import sys
 import os
 
@@ -77,42 +75,21 @@ def selectPermutation(permutations, size, position):
             return sel
 
 
+def matchPermutation(permutations, position, code):
+    pos = position.copy() + 1
+    perm = permutations[pos].copy()
+    for x in list(range(len(perm))):
+        if convertPermutation(perm[x]) == code:
+            return x
+    return -1
+
+
 def generatePermutationDict(size):
     permutations = dict.fromkeys(range(1, size + 2))
     for x in permutations.keys():
         permutations[x] = findCominations(
             x, list(itertools.product(range(10), repeat=3)))
     return permutations
-
-
-class Seed:
-    gene = []
-
-    def __init__(self, size, permutations):
-        self.gene = []
-        for x in range(size ** 3):
-            coordinates = convertToPos(size, x)
-            a = selectPermutation(permutations, size, coordinates[0])
-            b = selectPermutation(permutations, size, coordinates[1])
-            c = selectPermutation(permutations, size, coordinates[2])
-            self.gene.append(a)
-            self.gene.append(b)
-            self.gene.append(c)
-
-    def print(self):
-        print("Genome: {0}".format(self.gene))
-
-
-def generatePopulation(permutations, size, populationSize):
-    population = []
-    for x in range(populationSize):
-        seed = Seed(size, permutations)
-        population.append(seed.gene)
-        if(x != populationSize - 1):
-            print("Generating {0} out of {1}".format(x + 1, populationSize), end='\r')
-        else:
-            print("Generating {0} out of {1}".format(x + 1, populationSize))
-    return population
 
 
 class Cell:
@@ -284,11 +261,64 @@ class Cube:
         return points
 
     def trapCount(self):
-        count = 0;
+        count = 0
         for x in self.cells.keys():
             if self.cells[x].isTrap():
-                count += 1;
+                count += 1
         return count
+
+
+class Seed:
+    gene = []
+
+    def __init__(self, size, permutations, cube=None):
+        self.gene = []
+        if(cube is None):
+            for x in range(size ** 3):
+                coordinates = convertToPos(size, x)
+                self.gene.append(selectPermutation(
+                    permutations, size, coordinates[0]))
+                self.gene.append(selectPermutation(
+                    permutations, size, coordinates[1]))
+                self.gene.append(selectPermutation(
+                    permutations, size, coordinates[2]))
+        else:
+            originSize = cube.size
+            for x in range(size ** 3):
+                coordinates = convertToPos(size, x)
+                if(coordinates < originSize).all():
+                    position = convertToCell(originSize, coordinates)
+                    code = cube.cells[position].code
+                    self.gene.append(matchPermutation(
+                        permutations, coordinates[0], code[0]))
+                    self.gene.append(matchPermutation(
+                        permutations, coordinates[1], code[1]))
+                    self.gene.append(matchPermutation(
+                        permutations, coordinates[2], code[2]))
+                else:
+                    coordinates = convertToPos(size, x)
+                    self.gene.append(selectPermutation(
+                        permutations, size, coordinates[0]))
+                    self.gene.append(selectPermutation(
+                        permutations, size, coordinates[1]))
+                    self.gene.append(selectPermutation(
+                        permutations, size, coordinates[2]))
+
+    def print(self):
+        print("Genome: {0}".format(self.gene))
+
+
+def generatePopulation(permutations, size, populationSize):
+    population = []
+    for x in range(populationSize):
+        seed = Seed(size, permutations)
+        population.append(seed.gene)
+        if(x != populationSize - 1):
+            print("Generating {0} out of {1}".format(
+                x + 1, populationSize), end='\r')
+        else:
+            print("Generating {0} out of {1}".format(x + 1, populationSize))
+    return population
 
 
 def getFitness(individual, permutations):
@@ -312,7 +342,7 @@ def getFitness(individual, permutations):
         else:
             return (points, cube.trapCount())
     else:
-        return (-1 * limit, cube.trapCount()) 
+        return (-1 * limit, cube.trapCount())
 
 
 def calculateAverageFitness(population_fitness):
@@ -405,7 +435,7 @@ def generateGeneration(baseSize, populationSize, fitness, permutations):
     return population
 
 
-def evolve(baseSize, populationSize, totalGenerations, saveDir, seeds):
+def evolve(baseSize, populationSize, totalGenerations, saveDir, seeds=None):
     permutations = generatePermutationDict(baseSize)
     if(seeds is None):
         population = generatePopulation(permutations, baseSize, populationSize)
@@ -429,16 +459,21 @@ def evolve(baseSize, populationSize, totalGenerations, saveDir, seeds):
 
         fitness = []
         for individual in population:
-            if(str(individual) in genePool.keys()):
-                fitness_score = genePool[str(individual)]
+            if(hash(str(individual)) in genePool.keys()):
+                fitness_score = genePool[hash(str(individual))]
             else:
                 fitness_score, numtraps = getFitness(
                     individual, permutations)
                 if(fitness_score > average_fitness):
-                    genePool.update({str(individual): fitness_score})
-                if(fitness_score > -limit):    
-                    fitness_trapRatio.append([fitness_score, (numtraps/(baseSize ** 3))])
+                    genePool.update({hash(str(individual)): fitness_score})
+                if(fitness_score > -limit):
+                    fitness_trapRatio.append(
+                        [fitness_score, (numtraps / (baseSize ** 3))])
             fitness.append([fitness_score, individual])
+            if(len(fitness) < populationSize):
+                print("Processed: {0}".format(len(fitness)), end='\r')
+            else:
+                print("Processed: {0}".format(len(fitness)))
 
         fitness = sorted(
             fitness, key=lambda x: x[0], reverse=True)
@@ -446,21 +481,25 @@ def evolve(baseSize, populationSize, totalGenerations, saveDir, seeds):
         average_fitness_10 = calculateAverageFitness(
             fitness[0:int(len(fitness) * 0.10)])
         print("Average fitness of population: {0} ".format(
-            average_fitness), end='\n\n')
+            average_fitness))
+        print("Average fitness of the fittest: {0}".format(
+            average_fitness_10), end='\n\n')
         trend = numpy.append(trend, average_fitness)
         top10_trend = numpy.append(top10_trend, average_fitness_10)
 
         matplotlib.pyplot.figure(1).clf()
         matplotlib.pyplot.subplot(211)
         matplotlib.pyplot.plot(trend, label='Average Fitness')
-        text = matplotlib.pyplot.text(0.6, 0.15, "Generation: {0} \nAverage Fittness: {1}".format(generation, average_fitness), horizontalalignment='left', verticalalignment='center', transform=matplotlib.pyplot.subplot(211).transAxes)
+        text = matplotlib.pyplot.text(0.6, 0.15, "Generation: {0} \nAverage Fittness: {1}".format(
+            generation, average_fitness), horizontalalignment='left', verticalalignment='center', transform=matplotlib.pyplot.subplot(211).transAxes)
         matplotlib.pyplot.xlabel('Generation', fontsize=10)
         matplotlib.pyplot.ylabel('Fitness', fontsize=10)
         matplotlib.pyplot.title('Fitness vs Generation')
 
         matplotlib.pyplot.subplot(212)
         matplotlib.pyplot.plot(top10_trend, label='Top 10 Fitness')
-        text = matplotlib.pyplot.text(0.6, 0.15, "Generation: {0} \nAverage Fittness: {1}".format(generation, average_fitness_10), horizontalalignment='left', verticalalignment='center', transform=matplotlib.pyplot.subplot(212).transAxes)
+        text = matplotlib.pyplot.text(0.6, 0.15, "Generation: {0} \nAverage Fittness: {1}".format(
+            generation, average_fitness_10), horizontalalignment='left', verticalalignment='center', transform=matplotlib.pyplot.subplot(212).transAxes)
         matplotlib.pyplot.xlabel('Generation', fontsize=10)
         matplotlib.pyplot.ylabel('Fitness', fontsize=10)
         matplotlib.pyplot.title('Top 10 Fitness vs Generation')
@@ -475,13 +514,8 @@ def evolve(baseSize, populationSize, totalGenerations, saveDir, seeds):
         matplotlib.pyplot.figure(3).clf()
         x = list(map(lambda x: x[0], fitness_trapRatio))
         y = list(map(lambda x: x[1], fitness_trapRatio))
-        #matplotlib.pyplot.scatter(x, y, alpha=0.8, c='blue', edgecolors='none', s=30, label='success')
         matplotlib.pyplot.hist2d(x, y, norm=colors.LogNorm())
         matplotlib.pyplot.colorbar()
-        # x = list(map(lambda x: x[0], scatter_fittness_failure))
-        # y = list(map(lambda x: x[1], scatter_fittness_failure))
-        # #matplotlib.pyplot.scatter(x, y, alpha=0.8, c='red', edgecolors='none', s=30, label='failure')
-        # matplotlib.pyplot.hist2d(x, y, bins=100, norm=colors.LogNorm())
         matplotlib.pyplot.title('Score vs Trap Density')
         matplotlib.pyplot.xlabel('Fitness', fontsize=10)
         matplotlib.pyplot.ylabel('Trap Density', fontsize=10)
@@ -529,12 +563,13 @@ trapRooms.sort()
 
 global limit
 limit = int(numpy.power(10, int(numpy.log(size ** 3))))
+
 directory = str(size)
 if not os.path.isdir(directory):
     os.mkdir(directory)
 files = []
 files += [f for f in os.listdir(directory) if f.endswith('.pkl')]
-files = [os.path.join(directory,i) for i in files]
+files = [os.path.join(directory, i) for i in files]
 files = sorted(files, key=os.path.getmtime, reverse=True)
 if(len(files) > 0 and startWithSeed == 1):
     with open(files[0], 'rb') as f:
@@ -542,7 +577,35 @@ if(len(files) > 0 and startWithSeed == 1):
     fittest = evolve(size, populationSize,
                      total_generations, directory, fittest)
 else:
-    fittest = evolve(size, populationSize, total_generations, directory, None)
+    if(startWithSeed == 1):
+        directory = str(size - 1)
+        if not os.path.isdir(directory):
+            os.mkdir(directory)
+        files = []
+        files += [f for f in os.listdir(directory) if f.endswith('.pkl')]
+        files = [os.path.join(directory, i) for i in files]
+        files = sorted(files, key=os.path.getmtime, reverse=True)
+        if(len(files) > 0):
+            with open(files[0], 'rb') as f:
+                fittest = dill.load(f)
+            permutations = generatePermutationDict(size)
+            seeds = []
+            while(len(seeds) < int(populationSize * 0.10)):
+                for x in fittest:
+                    seed = Seed(size, permutations, Cube(x[1], permutations))
+                    fitness_score, numtraps = getFitness(
+                        seed.gene, permutations)
+                    seeds.append([fitness_score, seed.gene])
+                seeds = list(filter(lambda x: x[0] > -limit, seeds))
+                print("Seeds # {0}".format(len(seeds)))
+            fittest = evolve(size, populationSize,
+                             total_generations, directory, seeds)
+        else:
+            print("No seeds avaliable.")
+
+    else:
+        fittest = evolve(size, populationSize,
+                         total_generations, directory)
 
 if len(fittest) > 0:
     with open(os.path.join(directory, "fittest_{date:%Y%m%d_%H%M%S}.pkl".format(date=datetime.datetime.now())), 'wb') as f:
