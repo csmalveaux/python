@@ -52,29 +52,6 @@ def decodeDimension(dim):
     return (a + b + c)
 
 
-def selectPermutation(permutations, size, position):
-    pos = position.copy() + 1
-    perm = permutations[pos].copy()
-    secure_random = random.SystemRandom()
-    loc = pos
-    selection = list(range(len(perm)))
-    while len(selection) > 0:
-        sel = secure_random.choice(selection)
-        code = perm[sel]
-        moves = getMoves(code)
-        usable = True
-        loc = pos
-        for x in moves:
-            loc += x
-            if loc < 0 or loc >= (size + 2):
-                selection.remove(sel)
-                usable = False
-                break
-
-        if usable:
-            return sel
-
-
 def matchPermutation(permutations, position, code):
     pos = position.copy() + 1
     perm = permutations[pos].copy()
@@ -82,6 +59,55 @@ def matchPermutation(permutations, position, code):
         if convertPermutation(perm[x]) == code:
             return x
     return -1
+
+
+def validPermutations(permutations, size, position):
+    pos = position.copy() + 1
+    loc = pos
+    perm = permutations[pos].copy()
+    results = []
+    for x in perm:
+        moves = getMoves(x)
+        usable = True
+        loc = pos
+        for m in moves:
+            loc += m
+            if loc < 0 or loc >= (size + 2):
+                usable = False
+        if usable:
+            results.append(x)
+    return results
+
+
+def selectPermutation(permutations, size, position, density=None):
+    pos = position.copy() + 1
+    perm = permutations[pos].copy()
+    options = validPermutations(permutations, size, pos)
+    selection = []
+    trap = []
+    safe = []
+    secure_random = random.SystemRandom()
+
+    if density is not None:
+        for x in options:
+            if convertPermutation(x) in trapRooms:
+                trap.append(x)
+            else:
+                safe.append(x)
+        if len(trap) > 0 and len(safe) > 0:
+            ran = secure_random.random()
+            if ran > density:
+                selection = safe
+            else:
+                selection = trap
+        elif len(trap) > 0:
+            selection = trap
+        else:
+            selection = safe
+    else:
+        selection = options
+    sel = secure_random.choice(selection)
+    return matchPermutation(permutations, position, sel)
 
 
 def generatePermutationDict(size):
@@ -121,17 +147,6 @@ class Cell:
         self.seq_p = 0
         self.blocked = 0
         self.blockedby = -1
-
-    def print(self):
-        print("Pos: {0}".format(self.start_pos))
-        print("Code: {0}".format(self.code))
-        print("Curr: {0}".format(self.curr_pos))
-        print("Move: {0}".format(self.next_pos))
-        print("Dest: {0}".format(self.dest_pos))
-        print("seqp: {0}".format(self.seq_p))
-        print("Seq: {0}".format(self.sequence))
-        print("Blocked: {0}".format(self.blocked))
-        print("Blocked by: {0}".format(self.blockedby))
 
     def generate_seq(self):
         sequence = []
@@ -271,8 +286,10 @@ class Cube:
 class Seed:
     gene = []
 
-    def __init__(self, size, permutations, cube=None):
+    def __init__(self, size, permutations, cube=None, dig=None):
         self.gene = []
+        if dig is None:
+            dig = 0
         if(cube is None):
             for x in range(size ** 3):
                 coordinates = convertToPos(size, x)
@@ -286,7 +303,7 @@ class Seed:
             originSize = cube.size
             for x in range(size ** 3):
                 coordinates = convertToPos(size, x)
-                if(coordinates < originSize).all():
+                if(coordinates < originSize - dig).all():
                     position = convertToCell(originSize, coordinates)
                     code = cube.cells[position].code
                     self.gene.append(matchPermutation(
@@ -308,10 +325,16 @@ class Seed:
         print("Genome: {0}".format(self.gene))
 
 
-def generatePopulation(permutations, size, populationSize):
+def generatePopulation(permutations, size, populationSize, cube=None, dig=None):
     population = []
     for x in range(populationSize):
-        seed = Seed(size, permutations)
+        if cube is None:
+            seed = Seed(size, permutations)
+        else:
+            if dig is None:
+                seed = Seed(size, permutations, cube)
+            else:
+                seed = Seed(size, permutations, cube, dig)
         population.append(seed.gene)
         if(x != populationSize - 1):
             print("Generating {0} out of {1}".format(
@@ -346,7 +369,6 @@ def getFitness(individual, permutations):
 
 
 def calculateAverageFitness(population_fitness):
-
     total_fitness = 0
     for x in population_fitness:
         total_fitness += x[0]
@@ -374,7 +396,6 @@ def cross_breed(individual1, individual2):
             offspring.append(individual1[i])
         else:
             offspring.append(individual2[i])
-
     return offspring
 
 
@@ -405,7 +426,7 @@ def deleteDuplicates(fitness_list):
     return fitness_list
 
 
-def generateGeneration(baseSize, populationSize, fitness, permutations):
+def generateGeneration(baseSize, populationSize, fitness, permutations, seed=None):
     average_fitness = calculateAverageFitness(fitness)
     fittest = fitness[0]
     fitness = deleteDuplicates(fitness)
@@ -429,19 +450,31 @@ def generateGeneration(baseSize, populationSize, fitness, permutations):
             population.append(child.copy())
 
     if(len(population) < populationSize):
-        random_children = generatePopulation(
-            permutations, size, populationSize - len(population))
+        if seed is None:
+            random_children = generatePopulation(
+                permutations, size, populationSize - len(population))
+        else:
+            cube = Cube(seed[1], permutations)
+            random_children = generatePopulation(
+                permutations, size, populationSize - len(population), cube)
         population.extend(random_children)
     return population
 
 
-def evolve(baseSize, populationSize, totalGenerations, saveDir, seeds=None):
+def evolve(baseSize, populationSize, totalGenerations, saveDir, seeds=None, seed=None):
     permutations = generatePermutationDict(baseSize)
-    if(seeds is None):
-        population = generatePopulation(permutations, baseSize, populationSize)
+    if seeds is None:
+        if seed is None:
+            population = generatePopulation(
+                permutations, baseSize, populationSize)
+        else:
+            cube = Cube(seed[1], permutations)
+            population = generatePopulation(
+                permutations, baseSize, populationSize, cube)
     else:
         population = generateGeneration(
             baseSize, populationSize, seeds, permutations)
+
     average_fitness = 0
     fitness = []
     genePool = {}
@@ -454,8 +487,12 @@ def evolve(baseSize, populationSize, totalGenerations, saveDir, seeds=None):
     for generation in range(total_generations):
         print("Current Genertation: {0}".format(generation + 1))
         if(generation > 0):
-            population = generateGeneration(
-                baseSize, populationSize, fitness, permutations)
+            if seed is None:
+                population = generateGeneration(
+                    baseSize, populationSize, fitness, permutations)
+            else:
+                population = generateGeneration(
+                    baseSize, populationSize, fitness, permutations, seed)
 
         fitness = []
         for individual in population:
@@ -588,18 +625,16 @@ else:
         if(len(files) > 0):
             with open(files[0], 'rb') as f:
                 fittest = dill.load(f)
-            permutations = generatePermutationDict(size)
-            seeds = []
-            while(len(seeds) < int(populationSize * 0.10)):
-                for x in fittest:
-                    seed = Seed(size, permutations, Cube(x[1], permutations))
-                    fitness_score, numtraps = getFitness(
-                        seed.gene, permutations)
-                    seeds.append([fitness_score, seed.gene])
-                seeds = list(filter(lambda x: x[0] > -limit, seeds))
-                print("Seeds # {0}".format(len(seeds)))
+
+            directory = str(size)
+            seedVarities = []
+            for x in fittest:
+                seeds = evolve(size, populationSize,
+                               total_generations, str(size), None, x)
+                seedVarities.extend(seeds)
+
             fittest = evolve(size, populationSize,
-                             total_generations, directory, seeds)
+                             total_generations, directory, seedVarities)
         else:
             print("No seeds avaliable.")
 
