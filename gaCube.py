@@ -62,7 +62,7 @@ def matchPermutation(permutations, position, code):
 
 
 def validPermutations(permutations, size, position):
-    pos = position.copy() + 1
+    pos = position.copy()
     loc = pos
     perm = permutations[pos].copy()
     results = []
@@ -107,7 +107,8 @@ def selectPermutation(permutations, size, position, density=None):
     else:
         selection = options
     sel = secure_random.choice(selection)
-    return matchPermutation(permutations, position, sel)
+    retVal = matchPermutation(permutations, position, convertPermutation(sel))
+    return retVal
 
 
 def generatePermutationDict(size):
@@ -547,15 +548,15 @@ def evolve(baseSize, populationSize, totalGenerations, saveDir, seeds=None, seed
         histlist = list(filter(lambda x: x > -limit, histlist))
         matplotlib.pyplot.hist(numpy.asarray(histlist))
         matplotlib.pyplot.title("Fitness Scores")
-
-        matplotlib.pyplot.figure(3).clf()
-        x = list(map(lambda x: x[0], fitness_trapRatio))
-        y = list(map(lambda x: x[1], fitness_trapRatio))
-        matplotlib.pyplot.hist2d(x, y, norm=colors.LogNorm())
-        matplotlib.pyplot.colorbar()
-        matplotlib.pyplot.title('Score vs Trap Density')
-        matplotlib.pyplot.xlabel('Fitness', fontsize=10)
-        matplotlib.pyplot.ylabel('Trap Density', fontsize=10)
+        if(len(fitness_trapRatio) > 0):
+            matplotlib.pyplot.figure(3).clf()
+            x = list(map(lambda x: x[0], fitness_trapRatio))
+            y = list(map(lambda x: x[1], fitness_trapRatio))
+            matplotlib.pyplot.hist2d(x, y, norm=colors.LogNorm())
+            matplotlib.pyplot.colorbar()
+            matplotlib.pyplot.title('Score vs Trap Density')
+            matplotlib.pyplot.xlabel('Fitness', fontsize=10)
+            matplotlib.pyplot.ylabel('Trap Density', fontsize=10)
         matplotlib.pyplot.pause(0.10)
     matplotlib.pyplot.figure(1)
     matplotlib.pyplot.savefig(os.path.join(
@@ -627,12 +628,21 @@ else:
                 fittest = dill.load(f)
 
             directory = str(size)
+            average_fitness = calculateAverageFitness(fittest)
             seedVarities = []
+            fittest = sorted(fittest, key=lambda x: x[0], reverse=False)
             for x in fittest:
-                seeds = evolve(size, populationSize,
+                if(x[0] < average_fitness):
+                    print_individual(x)
+                    seeds = evolve(size, populationSize,
                                total_generations, str(size), None, x)
-                seedVarities.extend(seeds)
-
+                    seedVarities.extend(seeds)
+                if len(seedVarities) > populationSize:
+                    break
+            seedVarities = sorted(
+                seedVarities, key=lambda x: x[0], reverse=True)
+            if len(seedVarities) > populationSize:
+                seedVarities = seedVarities[0:populationSize - 1]
             fittest = evolve(size, populationSize,
                              total_generations, directory, seedVarities)
         else:
