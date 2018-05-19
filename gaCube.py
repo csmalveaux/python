@@ -94,6 +94,7 @@ def selectPermutation(permutations, size, position, density=None):
                 trap.append(x)
             else:
                 safe.append(x)
+
         if len(trap) > 0 and len(safe) > 0:
             ran = secure_random.random()
             if ran > density:
@@ -106,6 +107,7 @@ def selectPermutation(permutations, size, position, density=None):
             selection = safe
     else:
         selection = options
+
     sel = secure_random.choice(selection)
     retVal = matchPermutation(permutations, position, convertPermutation(sel))
     return retVal
@@ -287,24 +289,22 @@ class Cube:
 class Seed:
     gene = []
 
-    def __init__(self, size, permutations, cube=None, dig=None):
+    def __init__(self, size, permutations, cube=None, density=None):
         self.gene = []
-        if dig is None:
-            dig = 0
         if(cube is None):
             for x in range(size ** 3):
                 coordinates = convertToPos(size, x)
                 self.gene.append(selectPermutation(
-                    permutations, size, coordinates[0]))
+                    permutations, size, coordinates[0], density))
                 self.gene.append(selectPermutation(
-                    permutations, size, coordinates[1]))
+                    permutations, size, coordinates[1], density))
                 self.gene.append(selectPermutation(
-                    permutations, size, coordinates[2]))
+                    permutations, size, coordinates[2], density))
         else:
             originSize = cube.size
             for x in range(size ** 3):
                 coordinates = convertToPos(size, x)
-                if(coordinates < originSize - dig).all():
+                if(coordinates < originSize).all():
                     position = convertToCell(originSize, coordinates)
                     code = cube.cells[position].code
                     self.gene.append(matchPermutation(
@@ -316,26 +316,28 @@ class Seed:
                 else:
                     coordinates = convertToPos(size, x)
                     self.gene.append(selectPermutation(
-                        permutations, size, coordinates[0]))
+                        permutations, size, coordinates[0], density))
                     self.gene.append(selectPermutation(
-                        permutations, size, coordinates[1]))
+                        permutations, size, coordinates[1], density))
                     self.gene.append(selectPermutation(
-                        permutations, size, coordinates[2]))
+                        permutations, size, coordinates[2], density))
 
     def print(self):
         print("Genome: {0}".format(self.gene))
 
 
-def generatePopulation(permutations, size, populationSize, cube=None, dig=None):
+def generatePopulation(permutations, size, populationSize, cube=None, density=None):
     population = []
     for x in range(populationSize):
         if cube is None:
             seed = Seed(size, permutations)
         else:
-            if dig is None:
+            if density is None:
                 seed = Seed(size, permutations, cube)
             else:
-                seed = Seed(size, permutations, cube, dig)
+                seed = Seed(size, permutations, cube, density)
+                if(density == 1.0):
+                    density = None
         population.append(seed.gene)
         if(x != populationSize - 1):
             print("Generating {0} out of {1}".format(
@@ -471,7 +473,7 @@ def evolve(baseSize, populationSize, totalGenerations, saveDir, seeds=None, seed
         else:
             cube = Cube(seed[1], permutations)
             population = generatePopulation(
-                permutations, baseSize, populationSize, cube)
+                permutations, baseSize, populationSize, cube, 1.0)
     else:
         population = generateGeneration(
             baseSize, populationSize, seeds, permutations)
