@@ -294,12 +294,9 @@ class Seed:
         if(cube is None):
             for x in range(size ** 3):
                 coordinates = convertToPos(size, x)
-                self.gene.append(selectPermutation(
-                    permutations, size, coordinates[0], density))
-                self.gene.append(selectPermutation(
-                    permutations, size, coordinates[1], density))
-                self.gene.append(selectPermutation(
-                    permutations, size, coordinates[2], density))
+                for dim in range(3):
+                    self.gene.append(selectPermutation(
+                        permutations, size, coordinates[dim], density))
         else:
             originSize = cube.size
             for x in range(size ** 3):
@@ -307,20 +304,29 @@ class Seed:
                 if(coordinates < originSize).all():
                     position = convertToCell(originSize, coordinates)
                     code = cube.cells[position].code
-                    self.gene.append(matchPermutation(
-                        permutations, coordinates[0], code[0]))
-                    self.gene.append(matchPermutation(
-                        permutations, coordinates[1], code[1]))
-                    self.gene.append(matchPermutation(
-                        permutations, coordinates[2], code[2]))
+                    for dim in range(3):
+                        self.gene.append(matchPermutation(
+                            permutations, coordinates[dim], code[dim]))
                 else:
                     coordinates = convertToPos(size, x)
-                    self.gene.append(selectPermutation(
-                        permutations, size, coordinates[0], density))
-                    self.gene.append(selectPermutation(
-                        permutations, size, coordinates[1], density))
-                    self.gene.append(selectPermutation(
-                        permutations, size, coordinates[2], density))
+                    if(density == 1.0):
+                        secure_random = random.SystemRandom()
+                        trapdim = secure_random.choice(range(3))
+                        for dim in range(3):
+                            if(dim == trapdim):
+                                self.gene.append(selectPermutation(
+                                    permutations, size, coordinates[dim], density))
+                            else:
+                                self.gene.append(selectPermutation(
+                                    permutations, size, coordinates[dim]))
+                    else:
+                        for dim in range(3):
+                            if density is not None:
+                                self.gene.append(selectPermutation(
+                                    permutations, size, coordinates[dim], density / 3))
+                            else:
+                                self.gene.append(selectPermutation(
+                                    permutations, size, coordinates[dim]))
 
     def print(self):
         print("Genome: {0}".format(self.gene))
