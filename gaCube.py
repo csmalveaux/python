@@ -311,14 +311,14 @@ class Seed:
                     coordinates = convertToPos(size, x)
                     if(density == 1.0):
                         secure_random = random.SystemRandom()
-                        trapdim = secure_random.choice(range(3))
+                        safedim = secure_random.choice(range(3))
                         for dim in range(3):
-                            if(dim == trapdim):
-                                self.gene.append(selectPermutation(
-                                    permutations, size, coordinates[dim], density))
-                            else:
+                            if dim == safedim:
                                 self.gene.append(selectPermutation(
                                     permutations, size, coordinates[dim]))
+                            else:
+                                self.gene.append(selectPermutation(
+                                    permutations, size, coordinates[dim], density))
                     else:
                         for dim in range(3):
                             if density is not None:
