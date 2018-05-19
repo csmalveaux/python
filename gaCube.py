@@ -220,13 +220,11 @@ class Cube:
         self.locked = False
 
     def deadlockcheck(self):
-        deadlocks = 0
         deadlocked_pairs = []
         for x in self.blocked_pairs.keys():
             other_cell = self.blocked_pairs[x]
             if(other_cell is not None):
                 if(self.blocked_pairs[other_cell] == x):
-                    deadlocks += 1
                     if(self.cells[x].start_pos != self.cells[x].curr_pos).any() or (self.cells[other_cell].start_pos != self.cells[other_cell].curr_pos).any():
                         self.locked = True
                         deadlocked_pair = (x, other_cell)
@@ -305,9 +303,10 @@ class Seed:
                         for g in range(3):
                             self.gene.append(gene[(x * 3) + g])
                     else:
+                        coordinates = convertToPos(size, x)
                         for dim in range(3):
                             self.gene.append(selectPermutation(
-                                permutations, size, coordinates[dim]), density)
+                                permutations, size, coordinates[dim], density))
         else:
             originSize = cube.size
             for x in range(size ** 3):
@@ -323,7 +322,7 @@ class Seed:
                     if(density == 1.0):
                         for dim in range(3):
                             self.gene.append(selectPermutation(
-                                permutations, size, coordinates[dim]), density)
+                                permutations, size, coordinates[dim], density))
                     else:
                         for dim in range(3):
                             if density is not None:
@@ -445,7 +444,7 @@ def fixDeadlocks(cube, gene, permutations):
         cube.iterate()
 
     new_gene = gene.copy()
-    for x in cube.deadlocked_pairs:
+    for x in cube.deadlocks:
         cell_0, cell_1 = x
         new_cube = Cube(new_gene, permutations)
         if not new_cube.cells[cell_0].isTrap() and not new_cube.cells[cell_1].isTrap():
