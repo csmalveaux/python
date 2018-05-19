@@ -191,7 +191,7 @@ class Cube:
     origin = []
     cells = {}
     blocked_pairs = {}
-    deadlocks = 0
+    deadlocks = []
     locked = False
 
     def __init__(self, gene, permutations):
@@ -221,16 +221,17 @@ class Cube:
 
     def deadlockcheck(self):
         deadlocks = 0
+        deadlocked_pairs = []
         for x in self.blocked_pairs.keys():
             other_cell = self.blocked_pairs[x]
             if(other_cell is not None):
                 if(self.blocked_pairs[other_cell] == x):
                     deadlocks += 1
-                    if(self.cells[x].start_pos != self.cells[x].curr_pos).any():
+                    if(self.cells[x].start_pos != self.cells[x].curr_pos).any() or (self.cells[other_cell].start_pos != self.cells[other_cell].curr_pos).any():
                         self.locked = True
-                    if(self.cells[other_cell].start_pos != self.cells[other_cell].curr_pos).any():
-                        self.locked = True
-        return deadlocks // 2
+                        deadlocked_pair = (x, other_cell)
+                        deadlocked_pairs.append(deadlocked_pair)
+        return deadlocked_pairs
 
     def analyze(self):
         matplotlib.pyplot.ion()
@@ -289,14 +290,24 @@ class Cube:
 class Seed:
     gene = []
 
-    def __init__(self, size, permutations, cube=None, density=None):
+    def __init__(self, size, permutations, cube=None, density=None, gene=None, cell=None):
         self.gene = []
-        if(cube is None):
-            for x in range(size ** 3):
-                coordinates = convertToPos(size, x)
-                for dim in range(3):
-                    self.gene.append(selectPermutation(
-                        permutations, size, coordinates[dim], density))
+        if cube is None:
+            if gene is None:
+                for x in range(size ** 3):
+                    coordinates = convertToPos(size, x)
+                    for dim in range(3):
+                        self.gene.append(selectPermutation(
+                            permutations, size, coordinates[dim], density))
+            else:
+                for x in range(size ** 3):
+                    if x != cell:
+                        for g in range(3):
+                            self.gene.append(gene[(x * 3) + g])
+                    else:
+                        for dim in range(3):
+                            self.gene.append(selectPermutation(
+                                permutations, size, coordinates[dim]), density)
         else:
             originSize = cube.size
             for x in range(size ** 3):
@@ -310,15 +321,9 @@ class Seed:
                 else:
                     coordinates = convertToPos(size, x)
                     if(density == 1.0):
-                        secure_random = random.SystemRandom()
-                        safedim = secure_random.choice(range(3))
                         for dim in range(3):
-                            if dim == safedim:
-                                self.gene.append(selectPermutation(
-                                    permutations, size, coordinates[dim]))
-                            else:
-                                self.gene.append(selectPermutation(
-                                    permutations, size, coordinates[dim], density))
+                            self.gene.append(selectPermutation(
+                                permutations, size, coordinates[dim]), density)
                     else:
                         for dim in range(3):
                             if density is not None:
@@ -370,11 +375,11 @@ def getFitness(individual, permutations):
 
     if(not cube.locked and iterations > 1 and iterations < limit):
         if points > 0:
-            return (iterations, cube.trapCount())
+            return (iterations, cube.trapCount(), cube.locked)
         else:
-            return (points, cube.trapCount())
+            return (points, cube.trapCount(), cube.locked)
     else:
-        return (-1 * limit, cube.trapCount())
+        return (-1 * limit, cube.trapCount(), cube.locked)
 
 
 def calculateAverageFitness(population_fitness):
@@ -435,7 +440,25 @@ def deleteDuplicates(fitness_list):
     return fitness_list
 
 
-def generateGeneration(baseSize, populationSize, fitness, permutations, seed=None):
+def fixDeadlocks(cube, gene, permutations):
+    while not cube.locked:
+        cube.iterate()
+
+    new_gene = gene.copy()
+    for x in cube.deadlocked_pairs:
+        cell_0, cell_1 = x
+        new_cube = Cube(new_gene, permutations)
+        if not new_cube.cells[cell_0].isTrap() and not new_cube.cells[cell_1].isTrap():
+            rand = random.SystemRandom()
+            new_seed = Seed(cube.size, permutations, None, 1.0, gene, rand.choice(list(x)))
+            new_gene = new_seed.gene.copy()
+
+    return new_gene
+
+
+
+
+def generateGeneration(baseSize, populationSize, fitness, deadlocked, permutations, seed=None):
     average_fitness = calculateAverageFitness(fitness)
     fittest = fitness[0]
     fitness = deleteDuplicates(fitness)
@@ -448,7 +471,7 @@ def generateGeneration(baseSize, populationSize, fitness, permutations, seed=Non
     for survivor in survivors:
         population.append(survivor[1].copy())
 
-    if(len(survivors) == 0 or fittest[0] <= -limit):
+    if(len(survivors) == 0 or fittest[0] > -limit):
         population.append(fittest[1])
 
     for x in range(0, len(survivors), 2):
@@ -458,14 +481,23 @@ def generateGeneration(baseSize, populationSize, fitness, permutations, seed=Non
             child = mutation(child, 0.25, permutations)
             population.append(child.copy())
 
+    for x in deadlocked:
+        cube = Cube(x, permutations)
+        corrected_individual = fixDeadlocks(cube, x, permutations)
+        population.append(corrected_individual)
+
     if(len(population) < populationSize):
         if seed is None:
             random_children = generatePopulation(
                 permutations, size, populationSize - len(population))
         else:
             cube = Cube(seed[1], permutations)
-            random_children = generatePopulation(
-                permutations, size, populationSize - len(population), cube)
+            if len(survivors) == 0 or fittest[0] > -limit:
+                random_children = generatePopulation(
+                    permutations, size, populationSize - len(population), cube)
+            else:
+                random_children = generatePopulation(
+                    permutations, size, populationSize - len(population), cube, 1.0)
         population.extend(random_children)
     return population
 
@@ -486,11 +518,11 @@ def evolve(baseSize, populationSize, totalGenerations, saveDir, seeds=None, seed
 
     average_fitness = 0
     fitness = []
+    deadlocked = []
     genePool = {}
     trend = numpy.array([])
     top10_trend = numpy.array([])
     fitness_trapRatio = []
-    scatter_fittness_failure = []
     matplotlib.pyplot.ion()
 
     for generation in range(total_generations):
@@ -498,23 +530,26 @@ def evolve(baseSize, populationSize, totalGenerations, saveDir, seeds=None, seed
         if(generation > 0):
             if seed is None:
                 population = generateGeneration(
-                    baseSize, populationSize, fitness, permutations)
+                    baseSize, populationSize, fitness, deadlocked, permutations)
             else:
                 population = generateGeneration(
-                    baseSize, populationSize, fitness, permutations, seed)
+                    baseSize, populationSize, fitness, deadlocked, permutations, seed)
 
         fitness = []
+        deadlocked = []
         for individual in population:
             if(hash(str(individual)) in genePool.keys()):
                 fitness_score = genePool[hash(str(individual))]
             else:
-                fitness_score, numtraps = getFitness(
+                fitness_score, numtraps, locked = getFitness(
                     individual, permutations)
                 if(fitness_score > average_fitness):
                     genePool.update({hash(str(individual)): fitness_score})
                 if(fitness_score > -limit):
                     fitness_trapRatio.append(
                         [fitness_score, (numtraps / (baseSize ** 3))])
+                if locked:
+                    deadlocked.append(individual)
             fitness.append([fitness_score, individual])
             if(len(fitness) < populationSize):
                 print("Processed: {0}".format(len(fitness)), end='\r')
@@ -638,7 +673,7 @@ else:
             directory = str(size)
             average_fitness = calculateAverageFitness(fittest)
             seedVarities = []
-            fittest = sorted(fittest, key=lambda x: x[0], reverse=False)
+            fittest = sorted(fittest, key=lambda x:   x[0], reverse=False)
             for x in fittest:
                 if(x[0] < average_fitness):
                     print_individual(x)
