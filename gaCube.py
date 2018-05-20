@@ -483,7 +483,10 @@ def generateGeneration(baseSize, populationSize, fitness, deadlocked, permutatio
     for x in deadlocked:
         cube = Cube(x, permutations)
         corrected_individual = fixDeadlocks(cube, x, permutations)
-        population.append(corrected_individual)
+        if len(population) < populationSize:
+            population.append(corrected_individual)
+        else:
+            break
 
     if(len(population) < populationSize):
         if seed is None:
@@ -537,6 +540,7 @@ def evolve(baseSize, populationSize, totalGenerations, saveDir, seeds=None, seed
         fitness = []
         deadlocked = []
         for individual in population:
+            print("Processing...", end="\r")
             if(hash(str(individual)) in genePool.keys()):
                 fitness_score = genePool[hash(str(individual))]
             else:
@@ -549,6 +553,7 @@ def evolve(baseSize, populationSize, totalGenerations, saveDir, seeds=None, seed
                         [fitness_score, (numtraps / (baseSize ** 3))])
                 if locked:
                     deadlocked.append(individual)
+
             fitness.append([fitness_score, individual])
             if(len(fitness) < populationSize):
                 print("Processed: {0}".format(len(fitness)), end='\r')
