@@ -519,7 +519,7 @@ def evolve(baseSize, populationSize, totalGenerations, saveDir, seeds=None, seed
                 permutations, baseSize, populationSize, cube, 1.0)
     else:
         population = generateGeneration(
-            baseSize, populationSize, seeds, permutations)
+            baseSize, populationSize, seeds, [], permutations)
 
     average_fitness = 0
     fitness = []
@@ -543,7 +543,6 @@ def evolve(baseSize, populationSize, totalGenerations, saveDir, seeds=None, seed
         fitness = []
         deadlocked = []
         for individual in population:
-            print("Processing...", end="\r")
             if(hash(str(individual)) in genePool.keys()):
                 fitness_score = genePool[hash(str(individual))]
             else:
@@ -682,11 +681,10 @@ else:
             seedVarities = []
             fittest = sorted(fittest, key=lambda x:   x[0], reverse=False)
             for x in fittest:
-                if(x[0] < average_fitness):
-                    print_individual(x)
-                    seeds = evolve(size, populationSize,
-                               total_generations, str(size), None, x)
-                    seedVarities.extend(seeds)
+                print_individual(x)
+                seeds = evolve(size, populationSize,
+                           total_generations, str(size), None, x)
+                seedVarities.extend(seeds)
                 if len(seedVarities) > populationSize:
                     break
             seedVarities = sorted(
