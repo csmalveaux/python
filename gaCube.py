@@ -451,8 +451,11 @@ def fixDeadlocks(cube, gene, permutations):
             rand = random.SystemRandom()
             new_seed = Seed(cube.size, permutations, None, 1.0, gene, rand.choice(list(x)))
             new_gene = new_seed.gene.copy()
+    if hash(str(gene)) != hash(str(new_gene)):
+        return new_gene
+    else:
+        return None
 
-    return new_gene
 
 
 
@@ -470,7 +473,7 @@ def generateGeneration(baseSize, populationSize, fitness, deadlocked, permutatio
     for survivor in survivors:
         population.append(survivor[1].copy())
 
-    if(len(survivors) == 0 or fittest[0] > -limit):
+    if(len(survivors) == 0 and fittest[0] > -limit):
         population.append(fittest[1])
 
     for x in range(0, len(survivors), 2):
@@ -483,9 +486,9 @@ def generateGeneration(baseSize, populationSize, fitness, deadlocked, permutatio
     for x in deadlocked:
         cube = Cube(x, permutations)
         corrected_individual = fixDeadlocks(cube, x, permutations)
-        if len(population) < populationSize:
+        if len(population) < populationSize and corrected_individual is not None:
             population.append(corrected_individual)
-        else:
+        if len(population) == populationSize:
             break
 
     if(len(population) < populationSize):
