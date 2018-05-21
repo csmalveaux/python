@@ -359,6 +359,8 @@ def generatePopulation(permutations, size, populationSize, cube=None, density=No
 
 def getFitness(individual, permutations):
     cube = Cube(individual, permutations)
+    traps = cube.trapCount()
+    totalCells = cube.size ** 3
     iterations = 0
     points = limit
 
@@ -374,11 +376,13 @@ def getFitness(individual, permutations):
 
     if(not cube.locked and iterations > 1 and iterations < limit):
         if points > 0:
-            return (iterations, cube.trapCount(), cube.locked)
+            score = iterations * (1 - (traps / totalCells))
+            return (score, iterations, traps, cube.locked)
         else:
-            return (points, cube.trapCount(), cube.locked)
+            score = points * (1 - (traps / totalCells))
+            return (score, iterations, traps, cube.locked)
     else:
-        return (-1 * limit, cube.trapCount(), cube.locked)
+        return (-1 * limit, iterations, traps, cube.locked)
 
 
 def calculateAverageFitness(population_fitness):
@@ -388,18 +392,50 @@ def calculateAverageFitness(population_fitness):
     return total_fitness / len(population_fitness)
 
 
-def mutation(individual, percent_mutation, permutations):
+def extendedCubeCells(size1, size2):
+    retVals = []
+    if size1 == size2:
+        return retVals
+
+    if size1 > size2:
+        temp = size1
+        size1 = size2
+        size2 = temp
+
+    for x in range(size2 ** 3):
+        coordinates = convertToPos(size2, x)
+        if(coordinates > size1).any():
+            retVals.append(x)
+
+    return retVals
+
+
+def mutation(individual, percent_mutation, permutations, seed=None):
     chromosome_len = len(individual)
     base_size = int(numpy.rint(numpy.power(chromosome_len / 3, (1. / 3.))))
-    for x in range(int(chromosome_len * percent_mutation)):
-        gene_index = int(random.random() * chromosome_len)
-        cell_index = gene_index // 3
-        dim_index = gene_index % 3
-        coordinates = convertToPos(base_size, cell_index)
-        mutant_gene = selectPermutation(
-            permutations, base_size, coordinates[dim_index])
-        individual[gene_index] = mutant_gene
-    return individual
+    if seed is None:
+        for x in range(int(chromosome_len * percent_mutation)):
+            gene_index = int(random.random() * chromosome_len)
+            cell_index = gene_index // 3
+            dim_index = gene_index % 3
+            coordinates = convertToPos(base_size, cell_index)
+            mutant_gene = selectPermutation(
+                permutations, base_size, coordinates[dim_index])
+            individual[gene_index] = mutant_gene
+        return individual
+    else:
+        seed_size = int(numpy.rint(numpy.power(len(seed) / 3, (1. / 3.))))
+        changeableCells = extendedCubeCells(seed_size, base_size)
+        for x in range(int(len(changeableCells) * percent_mutation)):
+            cell_index = random.choice(changeableCells)
+            dim_index = random.choice(range(3))
+            gene_index = cell_index * 3 + dim_index
+            coordinates = convertToPos(base_size, cell_index)
+            mutant_gene = selectPermutation(
+                permutations, base_size, coordinates[dim_index])
+            individual[gene_index] = mutant_gene
+        return individual
+
 
 
 def cross_breed(individual1, individual2):
@@ -449,15 +485,13 @@ def fixDeadlocks(cube, gene, permutations):
         new_cube = Cube(new_gene, permutations)
         if not new_cube.cells[cell_0].isTrap() and not new_cube.cells[cell_1].isTrap():
             rand = random.SystemRandom()
-            new_seed = Seed(cube.size, permutations, None, 1.0, gene, rand.choice(list(x)))
+            new_seed = Seed(cube.size, permutations, None,
+                            1.0, gene, rand.choice(list(x)))
             new_gene = new_seed.gene.copy()
     if hash(str(gene)) != hash(str(new_gene)):
         return new_gene
     else:
         return None
-
-
-
 
 
 def generateGeneration(baseSize, populationSize, fitness, deadlocked, permutations, seed=None):
@@ -480,7 +514,7 @@ def generateGeneration(baseSize, populationSize, fitness, deadlocked, permutatio
         if(len(population) < populationSize and len(survivors) - 1 >= x + 1):
             child = cross_breed(survivors[x][1], survivors[x + 1][1])
             # match_score = similarity(survivors[x][1], survivors[x + 1][1])
-            child = mutation(child, 0.25, permutations)
+            child = mutation(child, 0.25, permutations, seed)
             population.append(child.copy())
 
     for x in deadlocked:
@@ -522,12 +556,15 @@ def evolve(baseSize, populationSize, totalGenerations, saveDir, seeds=None, seed
             baseSize, populationSize, seeds, [], permutations)
 
     average_fitness = 0
+    viable = []
     fitness = []
     deadlocked = []
     genePool = {}
     trend = numpy.array([])
     top10_trend = numpy.array([])
     fitness_trapRatio = []
+    fitness_iteration = []
+    trapRatio_iteration = []
     matplotlib.pyplot.ion()
 
     for generation in range(total_generations):
@@ -546,13 +583,19 @@ def evolve(baseSize, populationSize, totalGenerations, saveDir, seeds=None, seed
             if(hash(str(individual)) in genePool.keys()):
                 fitness_score = genePool[hash(str(individual))]
             else:
-                fitness_score, numtraps, locked = getFitness(
+                fitness_score, iterations, numtraps, locked = getFitness(
                     individual, permutations)
                 if(fitness_score > average_fitness):
                     genePool.update({hash(str(individual)): fitness_score})
                 if(fitness_score > -limit):
                     fitness_trapRatio.append(
                         [fitness_score, (numtraps / (baseSize ** 3))])
+                    if fitness_score > 0:
+                        fitness_iteration.append(
+                            [fitness_score, iterations])
+                        trapRatio_iteration.append(
+                            [(numtraps / (baseSize ** 3)), iterations])
+                        viable.append([fitness_score, individual])
                 if locked:
                     deadlocked.append(individual)
 
@@ -561,7 +604,7 @@ def evolve(baseSize, populationSize, totalGenerations, saveDir, seeds=None, seed
                 print("Processed: {0}".format(len(fitness)), end='\r')
             else:
                 print("Processed: {0}".format(len(fitness)))
-
+        viable = sorted(viable, key=lambda x: x[0], reverse=False)
         fitness = sorted(
             fitness, key=lambda x: x[0], reverse=True)
         average_fitness = calculateAverageFitness(fitness)
@@ -577,7 +620,7 @@ def evolve(baseSize, populationSize, totalGenerations, saveDir, seeds=None, seed
         matplotlib.pyplot.figure(1).clf()
         matplotlib.pyplot.subplot(211)
         matplotlib.pyplot.plot(trend, label='Average Fitness')
-        text = matplotlib.pyplot.text(0.6, 0.15, "Generation: {0} \nAverage Fittness: {1}".format(
+        text = matplotlib.pyplot.text(0.6, 0.15, "Generation: {0} \nAverage Fittness: {1:.2f}".format(
             generation, average_fitness), horizontalalignment='left', verticalalignment='center', transform=matplotlib.pyplot.subplot(211).transAxes)
         matplotlib.pyplot.xlabel('Generation', fontsize=10)
         matplotlib.pyplot.ylabel('Fitness', fontsize=10)
@@ -585,7 +628,7 @@ def evolve(baseSize, populationSize, totalGenerations, saveDir, seeds=None, seed
 
         matplotlib.pyplot.subplot(212)
         matplotlib.pyplot.plot(top10_trend, label='Top 10 Fitness')
-        text = matplotlib.pyplot.text(0.6, 0.15, "Generation: {0} \nAverage Fittness: {1}".format(
+        text = matplotlib.pyplot.text(0.6, 0.15, "Generation: {0} \nAverage Fittness: {1:.2f}".format(
             generation, average_fitness_10), horizontalalignment='left', verticalalignment='center', transform=matplotlib.pyplot.subplot(212).transAxes)
         matplotlib.pyplot.xlabel('Generation', fontsize=10)
         matplotlib.pyplot.ylabel('Fitness', fontsize=10)
@@ -597,14 +640,35 @@ def evolve(baseSize, populationSize, totalGenerations, saveDir, seeds=None, seed
         histlist = list(filter(lambda x: x > -limit, histlist))
         matplotlib.pyplot.hist(numpy.asarray(histlist))
         matplotlib.pyplot.title("Fitness Scores")
+        
         if(len(fitness_trapRatio) > 0):
             matplotlib.pyplot.figure(3).clf()
             x = list(map(lambda x: x[0], fitness_trapRatio))
             y = list(map(lambda x: x[1], fitness_trapRatio))
             matplotlib.pyplot.hist2d(x, y, norm=colors.LogNorm())
             matplotlib.pyplot.colorbar()
-            matplotlib.pyplot.title('Score vs Trap Density')
+            matplotlib.pyplot.title('Fitness vs Trap Density')
             matplotlib.pyplot.xlabel('Fitness', fontsize=10)
+            matplotlib.pyplot.ylabel('Trap Density', fontsize=10)
+
+        if(len(fitness_iteration) > 0):
+            matplotlib.pyplot.figure(4).clf()
+            x = list(map(lambda x: x[1], fitness_iteration))
+            y = list(map(lambda x: x[0], fitness_iteration))
+            matplotlib.pyplot.hist2d(x, y, norm=colors.LogNorm())
+            matplotlib.pyplot.colorbar()
+            matplotlib.pyplot.title('Cycle Length vs Fitness')
+            matplotlib.pyplot.xlabel('Cycle Length', fontsize=10)
+            matplotlib.pyplot.ylabel('Fitness', fontsize=10)
+
+        if(len(trapRatio_iteration) > 0):
+            matplotlib.pyplot.figure(5).clf()
+            x = list(map(lambda x: x[1], trapRatio_iteration))
+            y = list(map(lambda x: x[0], trapRatio_iteration))
+            matplotlib.pyplot.hist2d(x, y, norm=colors.LogNorm())
+            matplotlib.pyplot.colorbar()
+            matplotlib.pyplot.title('Cycle Length vs Trap Density')
+            matplotlib.pyplot.xlabel('Cycle Length', fontsize=10)
             matplotlib.pyplot.ylabel('Trap Density', fontsize=10)
         matplotlib.pyplot.pause(0.10)
     matplotlib.pyplot.figure(1)
@@ -616,8 +680,14 @@ def evolve(baseSize, populationSize, totalGenerations, saveDir, seeds=None, seed
     matplotlib.pyplot.figure(3)
     matplotlib.pyplot.savefig(os.path.join(
         saveDir, "trapgraph_{date:%Y%m%d_%H%M%S}.png".format(date=datetime.datetime.now())))
-    return list(
-        filter(lambda x: x[0] > 0, fitness))
+    matplotlib.pyplot.figure(4)
+    matplotlib.pyplot.savefig(os.path.join(
+        saveDir, "score_cyclegraph_{date:%Y%m%d_%H%M%S}.png".format(date=datetime.datetime.now())))
+    matplotlib.pyplot.figure(5)
+    matplotlib.pyplot.savefig(os.path.join(
+        saveDir, "trap_cyclegraph_{date:%Y%m%d_%H%M%S}.png".format(date=datetime.datetime.now())))
+    
+    return viable
 
 
 size = int(sys.argv[1])
@@ -679,11 +749,11 @@ else:
             directory = str(size)
             average_fitness = calculateAverageFitness(fittest)
             seedVarities = []
-            fittest = sorted(fittest, key=lambda x:   x[0], reverse=False)
+            fittest = sorted(fittest, key=lambda x: x[0], reverse=False)
             for x in fittest:
                 print_individual(x)
                 seeds = evolve(size, populationSize,
-                           total_generations, str(size), None, x)
+                               total_generations, str(size), None, x)
                 seedVarities.extend(seeds)
                 if len(seedVarities) > populationSize:
                     break
