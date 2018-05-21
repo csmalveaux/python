@@ -193,6 +193,7 @@ class Cube:
     blocked_pairs = {}
     deadlocks = []
     locked = False
+    traps = 0
 
     def __init__(self, gene, permutations):
         size = int(numpy.rint(numpy.power(len(gene) / 3, (1. / 3.))))
@@ -215,6 +216,8 @@ class Cube:
             self.cells[x] = Cell(
                 list(map(convertPermutation, [xperm, yperm, zperm])))
             self.cells[x].generate_seq()
+            if(self.cells[x].isTrap()):
+                self.traps += 1
         self.origin = self.space.copy()
         self.blocked_pairs = dict.fromkeys(range(size ** 3))
         self.locked = False
@@ -359,7 +362,7 @@ def generatePopulation(permutations, size, populationSize, cube=None, density=No
 
 def getFitness(individual, permutations):
     cube = Cube(individual, permutations)
-    traps = cube.trapCount()
+    traps = cube.traps
     totalCells = cube.size ** 3
     iterations = 0
     points = limit
@@ -450,7 +453,9 @@ def cross_breed(individual1, individual2):
 
 def print_individual(individual):
     print("\tGenome: {0}".format(individual[1]))
-    print("\tScore: {0}".format(individual[0]), end='\n\n')
+    print("\tScore: {0}".format(individual[0]))
+    print("\tDensity: {0}".format(individual[2]))
+    print("\tCycles: {0}".format(individual[3]), end='\n\n')
 
 
 def similarity(individual1, individual2):
@@ -595,15 +600,13 @@ def evolve(baseSize, populationSize, totalGenerations, saveDir, seeds=None, seed
                             [fitness_score, iterations])
                         trapRatio_iteration.append(
                             [(numtraps / (baseSize ** 3)), iterations])
-                        viable.append([fitness_score, individual])
-                if locked:
+                        viable.append([fitness_score, individual, (numtraps / (baseSize ** 3)), iterations])
+                if locked: 
                     deadlocked.append(individual)
 
-            fitness.append([fitness_score, individual])
-            if(len(fitness) < populationSize):
-                print("Processed: {0}".format(len(fitness)), end='\r')
-            else:
-                print("Processed: {0}".format(len(fitness)))
+            fitness.append([fitness_score, individual, (numtraps / (baseSize ** 3)), iterations])
+            print("Processed: {0}".format(len(fitness)), end='\r')
+        print("Processed: {0}".format(len(fitness)))
         viable = sorted(viable, key=lambda x: x[0], reverse=False)
         fitness = sorted(
             fitness, key=lambda x: x[0], reverse=True)
@@ -749,10 +752,10 @@ else:
             directory = str(size)
             average_fitness = calculateAverageFitness(fittest)
             seedVarities = []
-            fittest = sorted(fittest, key=lambda x: x[0], reverse=False)
+            fittest = sorted(fittest, key=lambda x: x[2], reverse=False)
             for x in fittest:
                 print_individual(x)
-                seeds = evolve(size, populationSize,
+                seeds = evolve(size, int(populationSize / 10),
                                total_generations, str(size), None, x)
                 seedVarities.extend(seeds)
                 if len(seedVarities) > populationSize:
