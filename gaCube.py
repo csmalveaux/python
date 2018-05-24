@@ -499,6 +499,49 @@ def fixDeadlocks(cube, gene, permutations):
         return None
 
 
+def trimCubes(individual, permutations):
+    print_individual(individual)
+    gene = individual[1]
+    while individual_new[0] < 0:
+        cube = Cube(individual_new[1], permutations)
+        traps = cube.traps
+        totalCells = cube.size ** 3
+        iterations = 0
+        points = limit
+
+        individual_new[2] = traps / totalCells
+
+        while points > 0:
+            iterations += 1
+            points += cube.iterate()
+            if(cube.origin == cube.space).all():
+                break
+            if cube.locked:
+                break
+            if(iterations > limit):
+                break
+
+        if(not cube.locked and iterations > 1 and iterations < limit):
+            if points > 0:
+                score = iterations * (1 - (traps / totalCells))
+                return (score, iterations, traps, cube.locked)
+            else:
+                score = points * (1 - (traps / totalCells))
+                return (score, iterations, traps, cube.locked)
+        else:
+            return (-1 * limit, iterations, traps, cube.locked)
+
+        if points <= 0:
+            mostblocked = []
+            for x in cube.cells.keys():
+                mostblocked.append([x, cube.cells[x].blocked])
+
+            mostblocked = sorted(mostblocked, key = lambda x: x[1], reverse=True)
+            for x in mostblocked[0: int(totalCells * 0.05)]:
+                new_seed = Seed(cube.size, permutations, None, 1.0, altered_gene, x[0])
+                altered_gene = new_seed.gene
+
+
 def generateGeneration(baseSize, populationSize, fitness, deadlocked, permutations, seed=None):
     average_fitness = calculateAverageFitness(fitness)
     fittest = fitness[0]
