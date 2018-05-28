@@ -94,11 +94,10 @@ def selectPermutation(permutations, size, position, density=None):
                 trap.append(x)
             else:
                 safe.append(x)
-
         if len(trap) > 0 and len(safe) > 0:
             ran = secure_random.random()
             if ran > density:
-                selection = safe
+                selection = safe 
             else:
                 selection = trap
         elif len(trap) > 0:
@@ -109,6 +108,12 @@ def selectPermutation(permutations, size, position, density=None):
         selection = options
 
     sel = secure_random.choice(selection)
+    if pos == 6 and density == 1.0:
+        sel = (2, 2, 2)
+    if pos == 21 and density == 1.0:
+        sel = (7, 7, 7)
+    if pos == 24 and density == 1.0:
+        sel = (8, 8, 8)
     retVal = matchPermutation(permutations, position, convertPermutation(sel))
     return retVal
 
@@ -322,10 +327,17 @@ class Seed:
                             permutations, coordinates[dim], code[dim]))
                 else:
                     coordinates = convertToPos(size, x)
-                    if(density == 1.0):
+                    if density == 1.0:
+                        # cannotTrap = [False, False, False]
                         for dim in range(3):
-                            self.gene.append(selectPermutation(
-                                permutations, size, coordinates[dim], density))
+                            value = selectPermutation(permutations, size, coordinates[dim], density)
+                            self.gene.append(value)
+                            perms = permutations[coordinates[dim] + 1]
+                            value = convertPermutation(perms[value])
+                            # if value not in trapRooms:
+                            #     cannotTrap[dim] = True
+                        # if cannotTrap[0] and cannotTrap[1] and cannotTrap[2]:
+                        #     print("{0} is not a trap".format(coordinates))
                     else:
                         for dim in range(3):
                             if density is not None:
@@ -334,6 +346,7 @@ class Seed:
                             else:
                                 self.gene.append(selectPermutation(
                                     permutations, size, coordinates[dim]))
+        # input()
 
     def print(self):
         print("Genome: {0}".format(self.gene))
@@ -440,7 +453,6 @@ def mutation(individual, percent_mutation, permutations, seed=None):
         return individual
 
 
-
 def cross_breed(individual1, individual2):
     offspring = []
     for i in range(len(individual1)):
@@ -499,49 +511,6 @@ def fixDeadlocks(cube, gene, permutations):
         return None
 
 
-def trimCubes(individual, permutations):
-    print_individual(individual)
-    gene = individual[1]
-    while individual_new[0] < 0:
-        cube = Cube(individual_new[1], permutations)
-        traps = cube.traps
-        totalCells = cube.size ** 3
-        iterations = 0
-        points = limit
-
-        individual_new[2] = traps / totalCells
-
-        while points > 0:
-            iterations += 1
-            points += cube.iterate()
-            if(cube.origin == cube.space).all():
-                break
-            if cube.locked:
-                break
-            if(iterations > limit):
-                break
-
-        if(not cube.locked and iterations > 1 and iterations < limit):
-            if points > 0:
-                score = iterations * (1 - (traps / totalCells))
-                return (score, iterations, traps, cube.locked)
-            else:
-                score = points * (1 - (traps / totalCells))
-                return (score, iterations, traps, cube.locked)
-        else:
-            return (-1 * limit, iterations, traps, cube.locked)
-
-        if points <= 0:
-            mostblocked = []
-            for x in cube.cells.keys():
-                mostblocked.append([x, cube.cells[x].blocked])
-
-            mostblocked = sorted(mostblocked, key = lambda x: x[1], reverse=True)
-            for x in mostblocked[0: int(totalCells * 0.05)]:
-                new_seed = Seed(cube.size, permutations, None, 1.0, altered_gene, x[0])
-                altered_gene = new_seed.gene
-
-
 def generateGeneration(baseSize, populationSize, fitness, deadlocked, permutations, seed=None):
     average_fitness = calculateAverageFitness(fitness)
     fittest = fitness[0]
@@ -565,13 +534,18 @@ def generateGeneration(baseSize, populationSize, fitness, deadlocked, permutatio
             child = mutation(child, 0.25, permutations, seed)
             population.append(child.copy())
 
+    deadlockCount = 0
     for x in deadlocked:
+        deadlockCount += 1
+        print("Deadlock(s) processed: {0}".format(deadlockCount), end="\r")
         cube = Cube(x, permutations)
         corrected_individual = fixDeadlocks(cube, x, permutations)
         if len(population) < populationSize and corrected_individual is not None:
             population.append(corrected_individual)
         if len(population) == populationSize:
             break
+    if deadlockCount > 0:
+        print("Deadlock(s) processed: {0}".format(deadlockCount))
 
     if(len(population) < populationSize):
         if seed is None:
@@ -579,18 +553,18 @@ def generateGeneration(baseSize, populationSize, fitness, deadlocked, permutatio
                 permutations, size, populationSize - len(population))
         else:
             cube = Cube(seed[1], permutations)
-            if len(survivors) == 0 or fittest[0] > -limit:
-                random_children = generatePopulation(
-                    permutations, size, populationSize - len(population), cube)
-            else:
+            if len(survivors) == 0 or average_fitness == -limit:
                 random_children = generatePopulation(
                     permutations, size, populationSize - len(population), cube, 1.0)
+            else:
+                random_children = generatePopulation(
+                    permutations, size, populationSize - len(population), cube)
         population.extend(random_children)
     return population
 
 
 def evolve(baseSize, populationSize, totalGenerations, saveDir, seeds=None, seed=None):
-    permutations = generatePermutationDict(baseSize)
+    permutations = generatePermutationDict(26)
     if seeds is None:
         if seed is None:
             population = generatePopulation(
@@ -717,21 +691,25 @@ def evolve(baseSize, populationSize, totalGenerations, saveDir, seeds=None, seed
             matplotlib.pyplot.xlabel('Cycle Length', fontsize=10)
             matplotlib.pyplot.ylabel('Trap Density', fontsize=10)
         matplotlib.pyplot.pause(0.10)
-    matplotlib.pyplot.figure(1)
-    matplotlib.pyplot.savefig(os.path.join(
-        saveDir, "fitgraphs_{date:%Y%m%d_%H%M%S}.png".format(date=datetime.datetime.now())), orientation='portrait')
-    matplotlib.pyplot.figure(2)
-    matplotlib.pyplot.savefig(os.path.join(
-        saveDir, "histgraph_{date:%Y%m%d_%H%M%S}.png".format(date=datetime.datetime.now())))
-    matplotlib.pyplot.figure(3)
-    matplotlib.pyplot.savefig(os.path.join(
-        saveDir, "trapgraph_{date:%Y%m%d_%H%M%S}.png".format(date=datetime.datetime.now())))
-    matplotlib.pyplot.figure(4)
-    matplotlib.pyplot.savefig(os.path.join(
-        saveDir, "score_cyclegraph_{date:%Y%m%d_%H%M%S}.png".format(date=datetime.datetime.now())))
-    matplotlib.pyplot.figure(5)
-    matplotlib.pyplot.savefig(os.path.join(
-        saveDir, "trap_cyclegraph_{date:%Y%m%d_%H%M%S}.png".format(date=datetime.datetime.now())))
+    if seed is None:
+        matplotlib.pyplot.figure(1)
+        matplotlib.pyplot.savefig(os.path.join(
+            saveDir, "fitgraphs_{date:%Y%m%d_%H%M%S}.png".format(date=datetime.datetime.now())), orientation='portrait')
+        matplotlib.pyplot.figure(2)
+        matplotlib.pyplot.savefig(os.path.join(
+            saveDir, "histgraph_{date:%Y%m%d_%H%M%S}.png".format(date=datetime.datetime.now())))
+        if(len(fitness_trapRatio) > 0):
+            matplotlib.pyplot.figure(3)
+            matplotlib.pyplot.savefig(os.path.join(
+                saveDir, "trapgraph_{date:%Y%m%d_%H%M%S}.png".format(date=datetime.datetime.now())))
+        if(len(fitness_iteration) > 0):
+            matplotlib.pyplot.figure(4)
+            matplotlib.pyplot.savefig(os.path.join(
+                saveDir, "score_cyclegraph_{date:%Y%m%d_%H%M%S}.png".format(date=datetime.datetime.now())))
+        if(len(trapRatio_iteration) > 0):
+            matplotlib.pyplot.figure(5)
+            matplotlib.pyplot.savefig(os.path.join(
+                saveDir, "trap_cyclegraph_{date:%Y%m%d_%H%M%S}.png".format(date=datetime.datetime.now())))
     
     return viable
 
@@ -777,6 +755,8 @@ files = sorted(files, key=os.path.getmtime, reverse=True)
 if(len(files) > 0 and startWithSeed == 1):
     with open(files[0], 'rb') as f:
         fittest = dill.load(f)
+    if len(fittest) > populationSize:
+        fittest = fittest[0: populationSize - 1]
     fittest = evolve(size, populationSize,
                      total_generations, directory, fittest)
 else:
