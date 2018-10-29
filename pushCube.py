@@ -1,9 +1,4 @@
-
-from mpl_toolkits.mplot3d import axes3d
-import matplotlib
-import matplotlib.pyplot
-import matplotlib.animation
-from matplotlib import colors
+from TwitterAPI import TwitterAPI
 import itertools
 import datetime
 import random
@@ -11,6 +6,9 @@ import numpy
 import dill
 import sys
 import os
+import threading
+import queue
+import time
 
 
 def convertToCell(base, pos):
@@ -97,7 +95,7 @@ def selectPermutation(permutations, size, position, density=None):
         if len(trap) > 0 and len(safe) > 0:
             ran = secure_random.random()
             if ran > density:
-                selection = safe 
+                selection = safe
             else:
                 selection = trap
         elif len(trap) > 0:
@@ -330,7 +328,8 @@ class Seed:
                     if density == 1.0:
                         # cannotTrap = [False, False, False]
                         for dim in range(3):
-                            value = selectPermutation(permutations, size, coordinates[dim], density)
+                            value = selectPermutation(
+                                permutations, size, coordinates[dim], density)
                             self.gene.append(value)
                             perms = permutations[coordinates[dim] + 1]
                             value = convertPermutation(perms[value])
@@ -444,74 +443,179 @@ def fixDeadlocks(cube, gene, permutations):
     else:
         return None
 
+
 def generateCubes(baseSize):
-    permutations = generatePermutationDict(26)
-
-    print("Initializing random cube:")    
-    random_cube = Seed(size, permutations)
-    print(random_cube)
-
+    workQueue = queue.Queue()
+    threads = []
+    global stack_hash
+    global viable
+    global last_posttime
+    global api
     viable = []
     stack_hash = {}
-    iteration_stack = []
-    iteration_stack.append(random_cube.gene)
-    stack_hash.update({hash(str(random_cube.gene)): "inital"})
+    last_posttime = datetime.datetime.now()
+    global totalCount
 
-    while len(iteration_stack) > 0:
-        print("Stack size: {0}".format(len(iteration_stack)))
-        curr_seed = iteration_stack.pop()
-        print("Current Genome: {0}".format(curr_seed), end='\n\n')
-        cube = Cube(curr_seed, permutations)
-        traps = cube.traps
-        totalCells = cube.size ** 3
-        iterations = 0
-        points = limit
+    totalCount = 0
 
-        while points > 0:
-            iterations += 1
-            points += cube.iterate()
-            if(cube.origin == cube.space).all():
-                break
-            if cube.locked:
-                break
-            if(iterations > limit):
-                break
+    for x in range(10):
+        thread = Thread(workQueue)
+        thread.start()
+        threads.append(thread)
 
-        if not cube.locked and iterations > 1 and iterations < limit:
-            if points > 0:
-                score = iterations * (1 - (traps / totalCells))
-                viable.append([score, curr_seed, (traps / (baseSize ** 3)), iterations])
-            else:
-                blocklist = []
-                for x in cube.cells.keys():
-                    blocklist.append([x, cube.cells[x].blocked])
+    consumer_key = 'wF8ZKWtg4g7YSZYUS9K3pXv6x'
+    consumer_secret = '5JDlb9SpgxP2IDH84G83db1hRCuj2ChaENuMsWZdVXYKQShPNK'
+    access_token_key = '1583661984-uqYMpEIs14CdtgQoskcc4bEKSoIkfh0Rolu9Kl5'
+    access_token_secret = 'v6MZYsKLAT0nC90N2ZfqAam6wejB8hvpVXU9kfrWbp6vg'
+    api = TwitterAPI(consumer_key, consumer_secret,
+                     access_token_key, access_token_secret)
+    global permutations
+    permutations = generatePermutationDict(26)
 
-                blocklist = sorted(blocklist, key = lambda x: x[1], reverse=True)
-                mostblocked = blocklist[0]
-                new_seed = Seed(cube.size, permutations, None, 1.0, curr_seed, mostblocked[0])
-                altered_gene = new_seed.gene
-                if (hash(str(altered_gene)) not in stack_hash.keys()):
-                    iteration_stack.append(altered_gene)
-                    stack_hash.update({hash(str(altered_gene)): "trim"})
-                    
-        else:
-            if iterations < limit and cube.locked:
-                deadlockList = cube.deadlocks
-                for pair in deadlockList:
-                    new_seed = Seed(cube.size, permutations, None, 1.0, curr_seed, pair[0])
-                    altered_gene = new_seed.gene
-                    if (hash(str(altered_gene)) not in stack_hash.keys()):
-                        iteration_stack.append(altered_gene)
-                        stack_hash.update({hash(str(altered_gene)): "deadlock_fix"})
-                    new_seed = Seed(cube.size, permutations, None, 1.0, curr_seed, pair[1])
-                    altered_gene = new_seed.gene
-                    if (hash(str(altered_gene)) not in stack_hash.keys()):
-                        iteration_stack.append(altered_gene)
-                        stack_hash.update({hash(str(altered_gene)): "deadlock_fix"})
+    print("Initializing random cube:")
+    random_cube = Seed(size, permutations)
 
+    workQueue.put(random_cube.gene)
+    exitFlag = 0
+    while not workQueue.empty():
+        pass
+
+    exitFlag = 1
+
+    for th in threads:
+        th.join()
+
+    try:
+        r = api.request('statuses/update', {'status': 'Completed'})
+    except:
+        print(r.status_code)
     return viable
 
+
+class Thread (threading.Thread):
+    def __init__(self, q):
+        threading.Thread.__init__(self)
+        self.q = q
+
+    def run(self):
+        while not exitFlag:
+            queueLock.acquire()
+            if not self.q.empty():
+                queueLock.release()
+                process_data(self.q)
+            else:
+                queueLock.release()
+
+
+def process_data(q):
+    while not exitFlag:
+        queueLock.acquire()
+        if not q.empty():
+            curr_seed = q.get()
+            global viable
+            global stack_hash
+            global totalCount
+            global last_posttime
+            global permutations
+            global api
+            totalCount = totalCount + 1
+            stack_size = q.qsize()
+            queueLock.release()
+            print("Stack size: {0}".format(stack_size))
+            queueLock.acquire()
+            if hash(str(curr_seed)) not in stack_hash.keys():
+                stack_hash.update({hash(str(curr_seed)): totalCount})
+                queueLock.release()
+                cube = Cube(curr_seed, permutations)
+                traps = cube.traps
+                totalCells = cube.size ** 3
+                iterations = 0
+                points = limit
+
+                while points > 0:
+                    iterations += 1
+                    points += cube.iterate()
+                    if(cube.origin == cube.space).all():
+                        break
+                    if cube.locked:
+                        break
+                    if(iterations > limit):
+                        break
+
+                if not cube.locked and iterations > 1 and iterations < limit:
+                    if points > 0:
+                        score = iterations * (1 - (traps / totalCells))
+                        queueLock.acquire()
+                        viable.append(
+                            [score, curr_seed, (traps / (cube.size ** 3)), iterations])
+                        queueLock.release()
+                        try:
+                            r = api.request(
+                                'statuses/update', {'status': "v:{0}".format(hash(str(curr_seed)))})
+                        except:
+                            print(r.status_code)
+                    else:
+                        blocklist = []
+                        for x in cube.cells.keys():
+                            blocklist.append([x, cube.cells[x].blocked])
+
+                        blocklist = sorted(
+                            blocklist, key=lambda x: x[1], reverse=True)
+                        mostblocked = blocklist[0]
+                        new_seed = Seed(cube.size, permutations,
+                                        None, 1.0, curr_seed, mostblocked[0])
+                        altered_gene = new_seed.gene
+                        queueLock.acquire()
+                        q.put(altered_gene)
+                        queueLock.release()
+                else:
+                    if iterations < limit and cube.locked:
+                        deadlockList = cube.deadlocks
+                        for pair in deadlockList:
+                            new_seed = Seed(
+                                cube.size, permutations, None, 1.0, curr_seed, pair[0])
+                            altered_gene = new_seed.gene
+                            queueLock.acquire()
+                            q.put(altered_gene)
+                            queueLock.release()
+
+                            new_seed = Seed(
+                                cube.size, permutations, None, 1.0, curr_seed, pair[1])
+                            altered_gene = new_seed.gene
+                            queueLock.acquire()
+                            q.put(altered_gene)
+                            queueLock.release()
+                    else:
+                        print("spins off into infinity")
+            else:
+                queueLock.release()
+        else:
+            queueLock.release()
+
+        curr_time = datetime.datetime.now()
+        queueLock.acquire()
+        timedelta = curr_time - last_posttime
+        queueLock.release()
+        if timedelta >= datetime.timedelta(seconds=3600):
+            queueLock.acquire()
+            try:
+                r = api.request(
+                    'statuses/update', {'status': "p:{0}s:{1}".format(totalCount, q.qsize())})
+            except:
+                print(r.status_code)
+            last_posttime = datetime.datetime.now()
+            queueLock.release()
+
+
 size = int(sys.argv[1])
+
+global viable
+global stack_hash
+global totalCount
+global last_posttime
+global queueLock
+global permutations
+queueLock = threading.Lock()
 
 primeList = list(range(2, 1000))
 for x in primeList:

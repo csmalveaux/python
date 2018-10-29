@@ -802,15 +802,17 @@ if len(fittest) > 0:
 
 print("Done!")
 
-if len(fittest) > 0:
-    print("Top Functional Cubes")
-    for x in fittest:
-        print_individual(x)
+print("# Viable: {0}".format(len(fittest)))
+
+# if len(fittest) > 0:
+#     print("Top Functional Cubes")
+#     for x in fittest:
+#         print_individual(x)
 
 # print("Done!")
-# print("Top 10% Cubes")
-# for x in fittest[0:int(len(fittest) * 0.10)]:
-#     print_individual(x)
+print("Top 10% Cubes")
+for x in fittest[0:int(len(fittest) * 0.10)]:
+    print_individual(x)
 
 # permutations = generatePermutationDict(size)
 # population = generatePopulation(permutations, size, populationSize)
