@@ -12,6 +12,11 @@ import dill
 import sys
 import os
 
+from pycallgraph import PyCallGraph
+from pycallgraph import Config
+from pycallgraph import GlobbingFilter
+from pycallgraph.output import GraphvizOutput
+
 
 def convertToCell(base, pos):
     return pos[0] * (base ** 2) + pos[1] * base + pos[2]
@@ -35,10 +40,6 @@ def findCominations(number, permutations):
 
 def convertPermutation(permutation):
     return permutation[0] * 100 + permutation[1] * 10 + permutation[2]
-
-
-def getPower(n):
-    return lambda x: n ** x
 
 
 def getMoves(p):
@@ -211,7 +212,8 @@ class Cube:
             start = x * 3
             values = gene[start: (start + 3)]
             coor = convertToPos(size, x)
-            self.space[coor[0] + 1, coor[1] + 1, coor[2] + 1] = x
+            #self.space[coor[0] + 1, coor[1] + 1, coor[2] + 1] = x
+            self.space[coor + 1] = x
             permutation = permutations[coor[0] + 1]
             xperm = permutation[values[0]]
             permutation = permutations[coor[1] + 1]
@@ -727,7 +729,7 @@ for x in primeList:
 
 primePowers = list()
 for x in primeList:
-    powLamda = getPower(x)
+    powLamda = lambda y: x ** y
     primePower = powLamda(2)
     count = 2
     while(primePower < 1000):

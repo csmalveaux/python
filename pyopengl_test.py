@@ -47,7 +47,7 @@ glut.glutKeyboardFunc(keyboard)
 
 data = np.zeros(4, [("position", np.float32, 2), ("color", np.float32, 4)])
 data['position'] = [(-1, +1), (+1, +1), (-1, -1), (+1, -1)]
-data['color'] = [(0, 1, 0, 1), (1, 1, 0, 1), (1, 0, 1, 1), (0, 0, 0, 1)]
+data['color'] = [(0, 1, 0, 1), (1, 1, 0, 1), (1, 0, 0, 1), (0, 0, 1, 1)]
 
 program = gl.glCreateProgram()
 vertex = gl.glCreateShader(gl.GL_VERTEX_SHADER)
@@ -62,7 +62,6 @@ if not gl.glGetShaderiv(vertex, gl.GL_COMPILE_STATUS):
     print(error)
     raise RuntimeError("Shader compilation error")
 
-gl.glCompileShader(fragment)
 gl.glCompileShader(fragment)
 if not gl.glGetShaderiv(fragment, gl.GL_COMPILE_STATUS):
     error = gl.glGetShaderInfoLog(fragment).decode()
