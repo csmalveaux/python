@@ -36,7 +36,6 @@ def keyboard(key, x, y):
     if key == b'\x1b':
         sys.exit()
 
-
 glut.glutInit()
 glut.glutInitDisplayMode(glut.GLUT_DOUBLE | glut.GLUT_RGBA)
 glut.glutCreateWindow('Hello world!')
@@ -66,7 +65,7 @@ gl.glCompileShader(fragment)
 if not gl.glGetShaderiv(fragment, gl.GL_COMPILE_STATUS):
     error = gl.glGetShaderInfoLog(fragment).decode()
     print(error)
-    raise RuntimeError("Shader compilation error")
+    raise RuntimeError("Fragment compilation error")
 
 
 gl.glAttachShader(program, vertex)

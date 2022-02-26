@@ -95,7 +95,7 @@ class Cube:
             permutation = permutations[adjustedCoor[2]]
             zperm = permutation[values[2]]
             if(xperm in trapRooms or yperm in trapRooms or zperm in trapRooms):
-                self.cells[x] = Cell([list(map(self.convertPermutation, [xperm, yperm, zperm]), True)
+                self.cells[x] = Cell(list(map(self.convertPermutation, [xperm, yperm, zperm])), True)
             self.cells[x] = Cell(
                 list(map(self.convertPermutation, [xperm, yperm, zperm])))
             self.cells[x].generate_seq()

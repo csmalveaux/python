@@ -55,7 +55,6 @@ def main():
 
     viewer.run()
 
-    print(loaddata.trapRooms)
 if __name__ == '__main__':
     glfw.init()
     main()

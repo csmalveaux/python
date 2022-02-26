@@ -15,11 +15,11 @@ class Seed:
     def convertPermutation(permutation):
         return permutation[0] * 100 + permutation[1] * 10 + permutation[2]
 
-    def matchPermutation(permutations, position, code):
+    def matchPermutation(self, permutations, position, code):
         pos = position.copy() + 1
         perm = permutations[pos].copy()
         for x in list(range(len(perm))):
-            if convertPermutation(perm[x]) == code:
+            if self.convertPermutation(perm[x]) == code:
                 return x
         return -1
 
@@ -59,7 +59,7 @@ class Seed:
             if len(trap) > 0 and len(safe) > 0:
                 ran = secure_random.random()
                 if ran > density:
-                    selection = safe 
+                    selection = safe
                 else:
                     selection = trap
             elif len(trap) > 0:

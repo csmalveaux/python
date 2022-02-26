@@ -1,7 +1,7 @@
 import numpy as np
 
 class Cube:
-	def __init__(self, gene, permutations):
+	def __init__(self, gene, permutations, startcoor=[0,0,0]):
 		size = int(np.rint(np.power(len(gene) / 3, (1. / 3.))))
         self.size = size
         self.space = np.zeros((size + 2, size + 2, size + 2))
@@ -11,7 +11,7 @@ class Cube:
         for x in self.cells.keys():
             start = x * 3
             values = gene[start: (start + 3)]
-            coor = convertToPos(size, x)
+            coor = numpy.array([sum(i) for i in zip(convertToPos(size, x), startcoor)])
             self.space[coor[0] + 1, coor[1] + 1, coor[2] + 1] = x
             permutation = permutations[coor[0] + 1]
             xperm = permutation[values[0]]
