@@ -29,11 +29,11 @@ class Cube:
             #self.space[coor[0] + 1, coor[1] + 1, coor[2] + 1] = x
             
             permutation = globals.permutations[coor[0] + 1]
-            xperm = None if (values[0] is None) else permutation[values[0]]
+            xperm = None if (values[0] is None or values[0] == -1) else permutation[values[0]]
             permutation = globals.permutations[coor[1] + 1]
-            yperm = None if (values[1] is None) else permutation[values[1]]
+            yperm = None if (values[1] is None or values[1] == -1) else permutation[values[1]]
             permutation = globals.permutations[coor[2] + 1]
-            zperm = None if (values[2] is None) else permutation[values[2]]
+            zperm = None if (values[2] is None or values[2] == -1) else permutation[values[2]]
             self.cells[x] = Cell(
                 list(map(cubeMath.convertPermutation, [xperm, yperm, zperm])))
             self.cells[x].generate_seq()

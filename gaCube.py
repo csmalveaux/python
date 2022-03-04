@@ -431,8 +431,10 @@ else:
         files = [os.path.join(directory, i) for i in files]
         files = sorted(files, key=os.path.getmtime, reverse=True)
         if(len(files) > 0):
-            with open(files[0], 'rb') as f:
-                fittest = dill.load(f)
+            for file in files:
+                with open(file, 'rb') as f:
+                    for i in dill.load(f):
+                        fittest.append(i)
 
             directory = str(globals.base_size)
             average_fitness = calculateAverageFitness(fittest)
