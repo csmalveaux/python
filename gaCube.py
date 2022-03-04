@@ -4,402 +4,29 @@ import matplotlib
 import matplotlib.pyplot
 import matplotlib.animation
 from matplotlib import colors
-import itertools
 import datetime
 import random
 import numpy
 import dill
 import sys
 import os
+import cubeMath
+import globals
 
-from pycallgraph import PyCallGraph
-from pycallgraph import Config
-from pycallgraph import GlobbingFilter
-from pycallgraph.output import GraphvizOutput
-
-
-def convertToCell(base, pos):
-    return pos[0] * (base ** 2) + pos[1] * base + pos[2]
+from seed import Seed
+from cube import Cube
 
 
-def convertToPos(base, cellNumber):
-    xPos = cellNumber // (base ** 2)
-    yPos = (cellNumber % (base ** 2)) // base
-    zPos = cellNumber % base
-
-    return numpy.array([xPos, yPos, zPos])
-
-def axisEdgeCheck(base, value):
-    return value == base - 1 or value == 0
-
-def edgeCheck(base, cellNumber):
-    pos = convertToPos(base, cellNumber)
-    return (any(map(axisEdgeCheck, [base] * 3, pos)))
-
-def findCominations(number, permutations):
-    returnList = []
-    for perm in permutations:
-        if(perm[0] + perm[1] + perm[2] == number):
-            returnList.append(perm)
-    return returnList
-
-def convertPermutation(permutation):
-    if permutation is None:
-        return None
-    return permutation[0] * 100 + permutation[1] * 10 + permutation[2]
-
-def getMoves(p):
-    return numpy.array([p[0] - p[1], p[1] - p[2], p[2] - p[0]])
-
-
-def decodeDimension(dim):
-    a = dim // 100
-    b = (dim % 100) // 10
-    c = dim % 10
-    return (a + b + c)
-
-def matchPermutation(permutations, position, code):
-    pos = position.copy() + 1
-    perm = permutations[pos].copy()
-    for x in list(range(len(perm))):
-        if convertPermutation(perm[x]) == code:
-            return x
-    return -1
-
-
-def validPermutations(permutations, size, position):
-    pos = position.copy()
-    loc = pos
-    perm = permutations[pos].copy()
-    results = []
-    for x in perm:
-        moves = getMoves(x)
-        usable = True
-        loc = pos
-        for m in moves:
-            loc += m
-            if loc < 0 or loc >= (size + 2):
-                usable = False
-        if usable:
-            results.append(x)
-    return results
-
-
-def selectPermutation(permutations, size, position, density=None):
-    pos = position.copy() + 1
-    perm = permutations[pos].copy()
-    options = validPermutations(permutations, size, pos)
-    selection = []
-    trap = []
-    safe = []
-    secure_random = random.SystemRandom()
-
-    if density is not None:
-        for x in options:
-            if convertPermutation(x) in trapRooms:
-                trap.append(x)
-            else:
-                safe.append(x)
-
-        if len(trap) > 0 and len(safe) > 0:
-            ran = secure_random.random()
-            if ran > density:
-                selection = safe 
-            else:
-                selection = trap
-        elif len(trap) > 0:
-            selection = trap
-        else:
-            selection = safe
-    else:
-        selection = options
-
-    sel = secure_random.choice(selection)
-    if pos == 6 and density == 1.0:
-        sel = (2, 2, 2)
-    if pos == 21 and density == 1.0:
-        sel = (7, 7, 7)
-    if pos == 24 and density == 1.0:
-        sel = (8, 8, 8)
-    if sel is None:
-        return None
-    retVal = matchPermutation(permutations, position, convertPermutation(sel))
-    return retVal
-
-
-def generatePermutationDict(size):
-    permutations = dict.fromkeys(range(1, size + 2))
-    for x in permutations.keys():
-        permutations[x] = findCominations(
-            x, list(itertools.product(range(10), repeat=3)))
-    return permutations
-
-
-class Cell:
-    code = []
-
-    start_pos = []
-    curr_pos = []
-    next_pos = []
-    dest_pos = []
-
-    movements = []
-    sequence = []
-    seq_p = 0
-    blocked = 0
-    blockedby = -1
-
-    def __init__(self, code):
-        self.code = code
-        if not self.isEmpty():
-            self.start_pos = numpy.array(list(map(decodeDimension, code)))
-            self.curr_pos = self.start_pos
-            x_moves = getMoves(convertToPos(10, self.code[0]))
-            y_moves = getMoves(convertToPos(10, self.code[1]))
-            z_moves = getMoves(convertToPos(10, self.code[2]))
-
-        self.sequence = []
-        if (self.isEmpty() or self.isTrap()):
-            self.movements = numpy.zeros((3, 3))
-        else:
-            self.movements = numpy.array([x_moves, y_moves, z_moves])
-        self.seq_p = 0
-        self.blocked = 0
-        self.blockedby = -1
-
-    def generate_seq(self):
-        sequence = []
-        if self.isEmpty():
-            return
-        sequence.append(self.start_pos[:])
-        for col in range(3):
-            for row in range(3):
-                pos = sequence[len(sequence) - 1].copy()
-                pos[row] += self.movements[row, col]
-                sequence.append(pos[:])
-        self.dest_pos = sequence[0]
-        self.sequence = sequence
-
-    def move(self):
-        if self.isEmpty():
-            return None
-        if numpy.array_equal(self.dest_pos, self.curr_pos):
-            if self.seq_p < len(self.sequence) - 1:
-                self.seq_p += 1
-            else:
-                self.seq_p = 0
-        self.dest_pos = self.sequence[self.seq_p]
-        delta = numpy.subtract(self.dest_pos, self.curr_pos)
-        if(numpy.sum(delta) != 0):
-            self.next_pos = numpy.add(self.curr_pos,
-                                      numpy.floor_divide(delta,
-                                                         numpy.abs(numpy.sum(delta))))
-            return self.next_pos
-        return self.curr_pos
-
-    def isTrap(self):
-        if(self.code[0] in trapRooms or
-            self.code[1] in trapRooms or
-                self.code[2] in trapRooms):
-            return True
-        return False
-    
-    def isEmpty(self):
-        return self.code[0] is None or self.code[1] is None or self.code[2] is None
-
-
-class Cube:
-    size = 0
-    space = []
-    origin = []
-    cells = {}
-    blocked_pairs = {}
-    deadlocks = []
-    locked = False
-    traps = 0
-
-    def __init__(self, gene, permutations):
-        size = int(numpy.rint(numpy.power(len(gene) / 3, (1. / 3.))))
-        self.size = size
-        self.space = numpy.zeros((size + 2, size + 2, size + 2))
-        self.space.fill(-1)
-
-        self.cells = dict.fromkeys(range(0, size**3))
-        for x in self.cells.keys():
-            start = x * 3
-            values = gene[start: (start + 3)]
-            coor = convertToPos(size, x)
-            #self.space[coor[0] + 1, coor[1] + 1, coor[2] + 1] = x
-            self.space[coor + 1] = x
-            permutation = permutations[coor[0] + 1]
-            xperm = None if (values[0] is None) else permutation[values[0]]
-            permutation = permutations[coor[1] + 1]
-            yperm = None if (values[1] is None) else permutation[values[1]]
-            permutation = permutations[coor[2] + 1]
-            zperm = None if (values[2] is None) else permutation[values[2]]
-            self.cells[x] = Cell(
-                list(map(convertPermutation, [xperm, yperm, zperm])))
-            self.cells[x].generate_seq()
-            if(self.cells[x].isTrap()):
-                self.traps += 1
-        self.origin = self.space.copy()
-        self.blocked_pairs = dict.fromkeys(range(size ** 3))
-        self.locked = False
-
-    def deadlockcheck(self):
-        deadlocked_pairs = []
-        for x in self.blocked_pairs.keys():
-            other_cell = self.blocked_pairs[x]
-            if(other_cell is not None):
-                if(self.blocked_pairs[other_cell] == x):
-                    if(self.cells[x].start_pos != self.cells[x].curr_pos).any() or (self.cells[other_cell].start_pos != self.cells[other_cell].curr_pos).any():
-                        self.locked = True
-                        deadlocked_pair = (x, other_cell)
-                        deadlocked_pairs.append(deadlocked_pair)
-        return deadlocked_pairs
-
-    def analyze(self):
-        matplotlib.pyplot.ion()
-        matplotlib.pyplot.figure(4).clf()
-        matplotlib.pyplot.gca(projection='3d')
-
-        x, y, z = numpy.meshgrid(numpy.arange(self.size + 2),
-                                 numpy.arange(self.size + 2),
-                                 numpy.arange(self.size + 2))
-        u = numpy.zeros((self.size + 2, self.size + 2, self.size + 2))
-        v = numpy.zeros((self.size + 2, self.size + 2, self.size + 2))
-        w = numpy.zeros((self.size + 2, self.size + 2, self.size + 2))
-
-        for i in self.cells.keys():
-            coor = convertToPos(self.size, i)
-            movements = self.cells[i].movements
-            u[coor[0] + 1, coor[1] + 1, coor[2] + 1] = movements[0, 0]
-            v[coor[0] + 1, coor[1] + 1, coor[2] + 1] = movements[1, 0]
-            w[coor[0] + 1, coor[1] + 1, coor[2] + 1] = movements[2, 0]
-        matplotlib.pyplot.quiver(
-            x, y, z, u, v, w, cmap=matplotlib.pyplot.cm.jet, normalize=True)
-        input()
-
-    def iterate(self):
-        points = 0
-        for x in self.cells.keys():
-            if self.cells[x].isEmpty():
-                continue
-            next_move = self.cells[x].move()
-            space_val = self.space[
-                next_move[0], next_move[1], next_move[2]]
-            if (space_val == -1 or space_val == x or self.cells[space_val].isTrap() or self.cells[space_val].isEmpty()):
-                curr_pos = self.cells[x].curr_pos
-                self.space[curr_pos[0], curr_pos[1], curr_pos[2]] = -1
-                self.space[next_move[0], next_move[1], next_move[2]] = x
-                self.cells[x].curr_pos = next_move
-                if self.cells[x].blocked > 0:
-                    points += self.cells[x].blocked
-                else:
-                    points += 1
-                self.cells[x].blocked = 0
-                self.blocked_pairs[x] = None
-            else:
-                self.cells[x].blocked += 1
-                points -= self.cells[x].blocked
-                self.blocked_pairs[x] = int(space_val)
-        self.deadlocks = self.deadlockcheck()
-        return points
-
-    def trapCount(self):
-        count = 0
-        for x in self.cells.keys():
-            if self.cells[x].isTrap():
-                count += 1
-        return count
-    
-    def emptyCount(self):
-        count = 0
-        for x in self.cells.keys():
-            if self.cells[x].isEmpty():
-                count += 1
-        return count
-
-
-class Seed:
-    gene = []
-
-    def __init__(self, size, permutations, cube=None, density=None, gene=None, cell=None):
-        self.gene = []
-        if cube is None:
-            if gene is None:
-                for x in range(size ** 3):
-                    coordinates = convertToPos(size, x)
-                    for dim in range(3):
-                        self.gene.append(selectPermutation(
-                            permutations, size, coordinates[dim], density))
-            else:
-                for x in range(size ** 3):
-                    if x != cell:
-                        for g in range(3):
-                            self.gene.append(gene[(x * 3) + g])
-                    else:
-                        secure_random = random.SystemRandom()
-                        coordinates = convertToPos(size, x)
-                        cells = []
-                        if not edgeCheck(size, x):
-                            cells.append((None, None, None))
-                        real_cell = []
-                        for dim in range(3):
-                            real_cell.append(selectPermutation(
-                                permutations, size, coordinates[dim], density))
-                        cells.append(real_cell)
-                        adding_cell = secure_random.choice(cells)
-                        for c in adding_cell:
-                            self.gene.append(c)
-                        
-        else:
-            originSize = cube.size
-            for x in range(size ** 3):
-                coordinates = convertToPos(size, x)
-                if(coordinates < originSize).all():
-                    position = convertToCell(originSize, coordinates)
-                    code = cube.cells[position].code
-                    for dim in range(3):
-                        self.gene.append(matchPermutation(
-                            permutations, coordinates[dim], code[dim]))
-                else:
-                    coordinates = convertToPos(size, x)
-                    if density == 1.0:
-                        # cannotTrap = [False, False, False]
-                        for dim in range(3):
-                            value = selectPermutation(permutations, size, coordinates[dim], density)
-                            self.gene.append(value)
-                            perms = permutations[coordinates[dim] + 1]
-                            value = convertPermutation(perms[value])
-                            # if value not in trapRooms:
-                            #     cannotTrap[dim] = True
-                        # if cannotTrap[0] and cannotTrap[1] and cannotTrap[2]:
-                        #     print("{0} is not a trap".format(coordinates))
-                    else:
-                        for dim in range(3):
-                            if density is not None:
-                                self.gene.append(selectPermutation(
-                                    permutations, size, coordinates[dim], density / 3))
-                            else:
-                                self.gene.append(selectPermutation(
-                                    permutations, size, coordinates[dim]))
-        # input()
-
-    def print(self):
-        print("Genome: {0}".format(self.gene))
-
-
-def generatePopulation(permutations, size, populationSize, cube=None, density=None):
+def generatePopulation(populationSize, cube=None, density=None):
     population = []
     for x in range(populationSize):
         if cube is None:
-            seed = Seed(size, permutations)
+            seed = Seed()
         else:
             if density is None:
-                seed = Seed(size, permutations, cube)
+                seed = Seed(cube)
             else:
-                seed = Seed(size, permutations, cube, density)
+                seed = Seed(cube, density)
                 if(density == 1.0):
                     density = None
         population.append(seed.gene)
@@ -411,8 +38,8 @@ def generatePopulation(permutations, size, populationSize, cube=None, density=No
     return population
 
 
-def getFitness(individual, permutations):
-    cube = Cube(individual, permutations)
+def getFitness(individual):
+    cube = Cube(individual)
     traps = cube.traps
     totalCells = cube.size ** 3
     iterations = 0
@@ -421,6 +48,7 @@ def getFitness(individual, permutations):
     while points > 0:
         iterations += 1
         points += cube.iterate()
+
         if(cube.origin == cube.space).all():
             break
         if cube.locked:
@@ -457,14 +85,14 @@ def extendedCubeCells(size1, size2):
         size2 = temp
 
     for x in range(size2 ** 3):
-        coordinates = convertToPos(size2, x)
+        coordinates = cubeMath.convertToPos(size2, x)
         if(coordinates > size1).any():
             retVals.append(x)
 
     return retVals
 
 
-def mutation(individual, percent_mutation, permutations, seed=None, isSurvivor=False):
+def mutation(individual, percent_mutation, seed=None, isSurvivor=False):
     chromosome_len = len(individual)
     base_size = int(numpy.rint(numpy.power(chromosome_len / 3, (1. / 3.))))
     if seed is None:
@@ -472,11 +100,10 @@ def mutation(individual, percent_mutation, permutations, seed=None, isSurvivor=F
             gene_index = int(random.random() * chromosome_len)
             cell_index = gene_index // 3
             dim_index = gene_index % 3
-            coordinates = convertToPos(base_size, cell_index)
-            mutant_gene = selectPermutation(
-                permutations, base_size, coordinates[dim_index])
+            coordinates = cubeMath.convertToPos(base_size, cell_index)
+            mutant_gene = cubeMath.selectPermutation(coordinates[dim_index])
             individual[gene_index] = mutant_gene 
-            if not isSurvivor and edgeCheck(base_size, cell_index):
+            if not isSurvivor and not cubeMath.edgeCheck(cell_index):
                 individual[gene_index] = random.choice([mutant_gene, None])
         return individual
     else:
@@ -486,11 +113,10 @@ def mutation(individual, percent_mutation, permutations, seed=None, isSurvivor=F
             cell_index = random.choice(changeableCells)
             dim_index = random.choice(range(3))
             gene_index = cell_index * 3 + dim_index
-            coordinates = convertToPos(base_size, cell_index)
-            mutant_gene = selectPermutation(
-                permutations, base_size, coordinates[dim_index])
+            coordinates = cubeMath.convertToPos(base_size, cell_index)
+            mutant_gene = cubeMath.selectPermutation(coordinates[dim_index])
             individual[gene_index] = mutant_gene
-            if not isSurvivor and edgeCheck(base_size, cell_index):
+            if not isSurvivor and cubeMath.edgeCheck(cell_index):
                 individual[gene_index] = random.choice([mutant_gene, None])
         return individual
 
@@ -534,17 +160,16 @@ def deleteDuplicates(fitness_list):
     return fitness_list
 
 
-def fixDeadlocks(cube, gene, permutations):
+def fixDeadlocks(cube, gene):
     while not cube.locked:
         cube.iterate()
 
     new_gene = gene.copy()
     for x in cube.deadlocks:
         cell_0, cell_1 = x
-        new_cube = Cube(new_gene, permutations)
+        new_cube = Cube(new_gene)
         if not new_cube.cells[cell_0].isTrap() and not new_cube.cells[cell_1].isTrap():
-            new_seed = Seed(cube.size, permutations, None,
-                            1.0, gene, cell_0)
+            new_seed = Seed(None, 1.0, gene, cell_0)
             new_gene = new_seed.gene.copy()
     if hash(str(gene)) != hash(str(new_gene)):
         return new_gene
@@ -552,7 +177,7 @@ def fixDeadlocks(cube, gene, permutations):
         return None
 
 
-def generateGeneration(baseSize, populationSize, fitness, deadlocked, permutations, seed=None):
+def generateGeneration(populationSize, fitness, deadlocked, seed=None):
     average_fitness = calculateAverageFitness(fitness)
     fittest = fitness[0]
     fitness = deleteDuplicates(fitness)
@@ -572,7 +197,7 @@ def generateGeneration(baseSize, populationSize, fitness, deadlocked, permutatio
         if(len(population) < populationSize and len(survivors) - 1 >= x + 1):
             child = cross_breed(survivors[x][1], survivors[x + 1][1])
             # match_score = similarity(survivors[x][1], survivors[x + 1][1])
-            child = mutation(child, 0.25, permutations, seed)
+            child = mutation(child, 0.25, seed)
             population.append(child.copy())
 
     deadlockCount = 0
@@ -583,8 +208,8 @@ def generateGeneration(baseSize, populationSize, fitness, deadlocked, permutatio
     for x in deadlocked:
         deadlockCount += 1
         print("Deadlock(s) processed: {0} out of {1}".format(deadlockCount, maxDeadlocks), end="\r")
-        cube = Cube(x, permutations)
-        corrected_individual = fixDeadlocks(cube, x, permutations)
+        cube = Cube(x)
+        corrected_individual = fixDeadlocks(cube, x)
         if len(population) < populationSize and corrected_individual is not None:
             population.append(corrected_individual)
         if len(population) == populationSize:
@@ -594,33 +219,27 @@ def generateGeneration(baseSize, populationSize, fitness, deadlocked, permutatio
 
     if(len(population) < populationSize):
         if seed is None:
-            random_children = generatePopulation(
-                permutations, baseSize, populationSize - len(population))
+            random_children = generatePopulation(populationSize - len(population))
         else:
-            cube = Cube(seed[1], permutations)
+            cube = cube.Cube(seed[1])
             if len(survivors) == 0 or average_fitness == -limit:
-                random_children = generatePopulation(
-                    permutations, baseSize, populationSize - len(population), cube, 1.0)
+                random_children = generatePopulation(populationSize - len(population), cube, 1.0)
             else:
-                random_children = generatePopulation(
-                    permutations, baseSize, populationSize - len(population), cube)
+                random_children = generatePopulation(populationSize - len(population), cube)
         population.extend(random_children)
     return population
 
 
-def evolve(baseSize, populationSize, totalGenerations, saveDir, seeds=None, seed=None):
-    permutations = generatePermutationDict(26)
+def evolve(populationSize, totalGenerations, saveDir, seeds=None, seed=None):
+    cubeMath.generatePermutationDict()
     if seeds is None:
         if seed is None:
-            population = generatePopulation(
-                permutations, baseSize, populationSize)
+            population = generatePopulation(populationSize)
         else:
-            cube = Cube(seed[1], permutations)
-            population = generatePopulation(
-                permutations, baseSize, populationSize, cube, 1.0)
+            cube = Cube(seed[1])
+            population = generatePopulation(populationSize, cube, 1.0)
     else:
-        population = generateGeneration(
-            baseSize, populationSize, seeds, [], permutations)
+        population = generateGeneration(populationSize, seeds, [])
 
     average_fitness = 0
     viable = []
@@ -638,11 +257,9 @@ def evolve(baseSize, populationSize, totalGenerations, saveDir, seeds=None, seed
         print("Current Generation: {0} out of {1}".format(generation + 1, totalGenerations))
         if(generation > 0):
             if seed is None:
-                population = generateGeneration(
-                    baseSize, populationSize, fitness, deadlocked, permutations)
+                population = generateGeneration(populationSize, fitness, deadlocked)
             else:
-                population = generateGeneration(
-                    baseSize, populationSize, fitness, deadlocked, permutations, seed)
+                population = generateGeneration(populationSize, fitness, deadlocked, seed)
 
         fitness = []
         deadlocked = []
@@ -650,23 +267,22 @@ def evolve(baseSize, populationSize, totalGenerations, saveDir, seeds=None, seed
             if(hash(str(individual)) in genePool.keys()):
                 fitness_score = genePool[hash(str(individual))]
             else:
-                fitness_score, iterations, numtraps, locked = getFitness(
-                    individual, permutations)
+                fitness_score, iterations, numtraps, locked = getFitness(individual)
                 if(fitness_score > average_fitness):
                     genePool.update({hash(str(individual)): fitness_score})
                 if(fitness_score > -limit):
                     fitness_trapRatio.append(
-                        [fitness_score, (numtraps / (baseSize ** 3))])
+                        [fitness_score, (numtraps / (globals.base_size ** 3))])
                     if fitness_score > 0:
                         fitness_iteration.append(
                             [fitness_score, iterations])
                         trapRatio_iteration.append(
-                            [(numtraps / (baseSize ** 3)), iterations])
-                        viable.append([fitness_score, individual, (numtraps / (baseSize ** 3)), iterations])
+                            [(numtraps / (globals.base_size ** 3)), iterations])
+                        viable.append([fitness_score, individual, (numtraps / (globals.base_size ** 3)), iterations])
                 if locked: 
                     deadlocked.append(individual)
 
-            fitness.append([fitness_score, individual, (numtraps / (baseSize ** 3)), iterations])
+            fitness.append([fitness_score, individual, (numtraps / (globals.base_size ** 3)), iterations])
             print("Processed: {0}".format(len(fitness)), end='\r')
         print("Processed: {0}".format(len(fitness)))
         viable = sorted(viable, key=lambda x: x[0], reverse=False)
@@ -759,7 +375,7 @@ def evolve(baseSize, populationSize, totalGenerations, saveDir, seeds=None, seed
     return viable
 
 
-size = int(sys.argv[1])
+globals.base_size = int(sys.argv[1])
 populationSize = int(sys.argv[2])
 total_generations = int(sys.argv[3])
 startWithSeed = int(sys.argv[4])
@@ -781,32 +397,33 @@ for x in primeList:
         if(primePower is not primePowers and primePower < 1000):
             primePowers.append(primePower)
 
-global trapRooms
-
-trapRooms = list(primeList)
-trapRooms.extend(primePowers)
-trapRooms.sort()
+globals.trapRooms = list(primeList)
+globals.trapRooms.extend(primePowers)
+globals.trapRooms.sort()
 
 global limit
-limit = int(numpy.power(10, int(numpy.log(size ** 3))))
+limit = int(numpy.power(10, int(numpy.log(globals.base_size ** 3))))
 
-directory = str(size)
+directory = str(globals.base_size)
 if not os.path.isdir(directory):
     os.mkdir(directory)
 files = []
 files += [f for f in os.listdir(directory) if f.endswith('.pkl')]
 files = [os.path.join(directory, i) for i in files]
 files = sorted(files, key=os.path.getmtime, reverse=True)
+fittest = []
 if(len(files) > 0 and startWithSeed == 1):
-    with open(files[0], 'rb') as f:
-        fittest = dill.load(f)
+    for file in files:
+        with open(file, 'rb') as f:
+            for i in dill.load(f):
+                fittest.append(i)
     if len(fittest) > populationSize:
         fittest = fittest[0: populationSize - 1]
-    fittest = evolve(size, populationSize,
+    fittest = evolve(populationSize,
                      total_generations, directory, fittest)
 else:
     if(startWithSeed == 1):
-        directory = str(size - 1)
+        directory = str(globals.base_size - 1)
         if not os.path.isdir(directory):
             os.mkdir(directory)
         files = []
@@ -817,14 +434,13 @@ else:
             with open(files[0], 'rb') as f:
                 fittest = dill.load(f)
 
-            directory = str(size)
+            directory = str(globals.base_size)
             average_fitness = calculateAverageFitness(fittest)
             seedVarities = []
             fittest = sorted(fittest, key=lambda x: x[2], reverse=False)
             for x in fittest:
                 print_individual(x)
-                seeds = evolve(size, int(populationSize / 10),
-                               total_generations, str(size), None, x)
+                seeds = evolve(int(populationSize / 10), total_generations, str(globals.base_size), None, x)
                 seedVarities.extend(seeds)
                 if len(seedVarities) > populationSize:
                     break
@@ -832,13 +448,12 @@ else:
                 seedVarities, key=lambda x: x[0], reverse=True)
             if len(seedVarities) > populationSize:
                 seedVarities = seedVarities[0:populationSize - 1]
-            fittest = evolve(size, populationSize,
-                             total_generations, directory, seedVarities)
+            fittest = evolve(populationSize, total_generations, directory, seedVarities)
         else:
             print("No seeds avaliable.")
 
     else:
-        fittest = evolve(size, populationSize,
+        fittest = evolve(populationSize,
                          total_generations, directory)
 
 if len(fittest) > 0:
